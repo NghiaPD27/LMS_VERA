@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import vera.lms.enums.EnrollmentStatus;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "enrollments")
 @Getter
@@ -29,4 +31,10 @@ public class Enrollment {
     @Builder.Default
     @Column(name = "status", nullable = false, length = 20)
     private EnrollmentStatus status = EnrollmentStatus.ACTIVE;
+
+    @Column(name = "enrolled_at")
+    private Instant enrolledAt;
+
+    @Column(name = "expired_at")
+    private Instant expiredAt;
 }

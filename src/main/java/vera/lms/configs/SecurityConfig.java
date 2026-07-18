@@ -69,7 +69,9 @@ public class SecurityConfig {
                                 "/v3/api-docs",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                        .requestMatchers("/api/public/**").permitAll()
+                        .requestMatchers("/api/webhooks/sepay").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/programs/{programId}/lessons").hasAnyRole("ADMIN", "STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/programs/{programId}/lessons").hasRole("ADMIN")
@@ -81,6 +83,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/lessons/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/enrollments").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/enrollments/**").hasRole("ADMIN")
+                        .requestMatchers("/api/student/purchases/**").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/student/enrollments").hasAnyRole("ADMIN", "STUDENT")
                         .anyRequest().authenticated()
                 )

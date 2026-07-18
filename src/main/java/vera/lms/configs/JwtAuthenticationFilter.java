@@ -81,7 +81,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             if (accountAccessService.mustChangePassword(user)) {
                 String uri = request.getRequestURI();
-                if (!uri.equals("/api/auth/change-password") && !uri.equals("/api/auth/logout")) {
+                if (!uri.equals("/api/auth/me")
+                        && !uri.equals("/api/auth/change-password")
+                        && !uri.equals("/api/auth/logout")) {
                     throw new ForbiddenException("Must change password first");
                 }
             }

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vera.lms.dtos.AuthDto.RegisterStudentRequest;
 import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.dtos.UserDto.*;
 import vera.lms.enums.AccountStatus;
@@ -29,7 +30,6 @@ public class UserService {
     private final StudentProfileRepository studentProfileRepository;
     private final TeacherProfileRepository teacherProfileRepository;
     private final EvaluatorProfileRepository evaluatorProfileRepository;
-    private final AccountAccessRepository accountAccessRepository;
     private final PasswordEncoder passwordEncoder;
     private final AccountAccessService accountAccessService;
 
@@ -40,7 +40,6 @@ public class UserService {
             StudentProfileRepository studentProfileRepository,
             TeacherProfileRepository teacherProfileRepository,
             EvaluatorProfileRepository evaluatorProfileRepository,
-            AccountAccessRepository accountAccessRepository,
             PasswordEncoder passwordEncoder,
             AccountAccessService accountAccessService) {
         this.userRepository = userRepository;
@@ -48,7 +47,6 @@ public class UserService {
         this.studentProfileRepository = studentProfileRepository;
         this.teacherProfileRepository = teacherProfileRepository;
         this.evaluatorProfileRepository = evaluatorProfileRepository;
-        this.accountAccessRepository = accountAccessRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountAccessService = accountAccessService;
     }
@@ -75,6 +73,36 @@ public class UserService {
                 .build();
 
         AccountAccess access = accountAccessService.createDefaultAccess(user);
+
+        user.setStudentProfile(profile);
+        user.setAccountAccess(access);
+
+        userRepository.save(user);
+        return profile;
+    }
+
+    public StudentProfile registerStudent(RegisterStudentRequest request) {
+        validateUniqueUsernameAndEmail(request.username(), request.email());
+
+        Role role = roleRepository.findByName(RoleName.STUDENT)
+                .orElseThrow(() -> new ResourceNotFoundException("Role STUDENT not found"));
+
+        User user = User.builder()
+                .username(request.username())
+                .email(request.email())
+                .password(passwordEncoder.encode(request.password()))
+                .enabled(true)
+                .role(role)
+                .build();
+
+        StudentProfile profile = StudentProfile.builder()
+                .user(user)
+                .firstName(request.firstName())
+                .lastName(request.lastName())
+                .phoneNumber(request.phoneNumber())
+                .build();
+
+        AccountAccess access = accountAccessService.createSelfRegisteredStudentAccess(user);
 
         user.setStudentProfile(profile);
         user.setAccountAccess(access);
@@ -184,33 +212,6 @@ public class UserService {
         }
 
         return userRepository.save(user);
-    }
-
-    public AccountAccess extendAccount(Long userId, Integer months) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id " + userId));
-
-        boolean isStudent = user.getRole() != null && user.getRole().getName() == RoleName.STUDENT;
-        if (!isStudent) {
-            throw new BadRequestException("Only student accounts can be extended");
-        }
-
-        AccountAccess access = user.getAccountAccess();
-        if (access == null) {
-            access = accountAccessService.createDefaultAccess(user);
-            user.setAccountAccess(access);
-        }
-
-        java.time.Instant baseTime = access.getExpiredAt() != null ? access.getExpiredAt() : java.time.Instant.now();
-        java.time.ZonedDateTime zdt = baseTime.atZone(java.time.ZoneOffset.UTC).plusMonths(months);
-        access.setExpiredAt(zdt.toInstant());
-
-        if (access.getStatus() == AccountStatus.EXPIRED) {
-            access.setStatus(AccountStatus.ACTIVE);
-        }
-
-        accountAccessRepository.save(access);
-        return access;
     }
 
     @Transactional(readOnly = true)

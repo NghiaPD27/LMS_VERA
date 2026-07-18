@@ -98,9 +98,9 @@ public class RbacE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void testAdminExtendsNonExistentUserId() throws Exception {
+    void testAdminExtendsNonExistentEnrollmentId() throws Exception {
         String payload = "{\"months\": 6}";
-        mockMvc.perform(patch("/api/admin/users/99999/extend")
+        mockMvc.perform(patch("/api/admin/enrollments/99999/extend")
                 .header("Authorization", "Bearer admin-token")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(payload))

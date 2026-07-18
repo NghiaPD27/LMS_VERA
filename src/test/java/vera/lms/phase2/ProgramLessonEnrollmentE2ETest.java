@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import vera.lms.BaseIntegrationTest;
 
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -37,6 +41,18 @@ class ProgramLessonEnrollmentE2ETest extends BaseIntegrationTest {
                 INSERT INTO student_lesson_progress (student_id, lesson_id, status)
                 VALUES (?, ?, ?)
                 """, studentId, lessonId, status);
+    }
+
+    private Long seedEnrollment(Long studentId, Long programId, String status, Instant enrolledAt, Instant expiredAt) {
+        jdbcTemplate.update("""
+                INSERT INTO enrollments (student_id, program_id, status, enrolled_at, expired_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, studentId, programId, status, enrolledAt, expiredAt);
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM enrollments WHERE student_id = ? AND program_id = ?",
+                Long.class,
+                studentId,
+                programId);
     }
 
     @Test
@@ -154,6 +170,107 @@ class ProgramLessonEnrollmentE2ETest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].name").value("Lesson 1"))
                 .andExpect(jsonPath("$[0].status").value("PUBLISHED"));
+    }
+
+    @Test
+    void testStudentCannotAccessLessonsAfterEnrollmentExpires() throws Exception {
+        Long studentId = seedStudent("student_user", "student@vera.lms");
+        Long programId = seedProgram("Expired Course Program");
+        Long lessonId = seedLesson(programId, "Expired Lesson", 1, "PUBLISHED");
+        seedEnrollment(
+                studentId,
+                programId,
+                "ACTIVE",
+                Instant.now().minus(210, ChronoUnit.DAYS),
+                Instant.now().minus(1, ChronoUnit.DAYS));
+        seedProgress(studentId, lessonId, "VIDEO_IN_PROGRESS");
+
+        mockMvc.perform(get("/api/programs/" + programId + "/lessons")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Course enrollment is expired or unavailable"));
+    }
+
+    @Test
+    void testAdminExtendsEnrollmentFromCurrentFutureExpiry() throws Exception {
+        Long studentId = seedStudent("student_user", "student@vera.lms");
+        Long programId = seedProgram("Extend Future Program");
+        Instant originalExpiry = Instant.now().plus(30, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
+        Long enrollmentId = seedEnrollment(
+                studentId,
+                programId,
+                "ACTIVE",
+                Instant.now().minus(30, ChronoUnit.DAYS),
+                originalExpiry);
+
+        mockMvc.perform(patch("/api/admin/enrollments/" + enrollmentId + "/extend")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"months\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(enrollmentId))
+                .andExpect(jsonPath("$.expiredAt").exists());
+
+        Instant newExpiry = jdbcTemplate.queryForObject(
+                "SELECT expired_at FROM enrollments WHERE id = ?",
+                Timestamp.class,
+                enrollmentId).toInstant();
+        long daysDiff = ChronoUnit.DAYS.between(originalExpiry, newExpiry);
+        assertTrue(daysDiff >= 58 && daysDiff <= 63);
+    }
+
+    @Test
+    void testAdminExtendsExpiredEnrollmentFromNowWithoutChangingAccountExpiry() throws Exception {
+        Long studentId = seedStudent("student_user", "student@vera.lms");
+        Long programId = seedProgram("Extend Expired Program");
+        Instant legacyAccountExpiry = Instant.now().minus(20, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
+        jdbcTemplate.update(
+                "UPDATE account_access SET expired_at = ? WHERE user_id = ?",
+                legacyAccountExpiry,
+                studentId);
+        Long enrollmentId = seedEnrollment(
+                studentId,
+                programId,
+                "ACTIVE",
+                Instant.now().minus(210, ChronoUnit.DAYS),
+                Instant.now().minus(1, ChronoUnit.DAYS));
+
+        mockMvc.perform(patch("/api/admin/enrollments/" + enrollmentId + "/extend")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"months\":1}"))
+                .andExpect(status().isOk());
+
+        Instant newExpiry = jdbcTemplate.queryForObject(
+                "SELECT expired_at FROM enrollments WHERE id = ?",
+                Timestamp.class,
+                enrollmentId).toInstant();
+        Instant accountExpiry = jdbcTemplate.queryForObject(
+                "SELECT expired_at FROM account_access WHERE user_id = ?",
+                Timestamp.class,
+                studentId).toInstant();
+
+        long daysFromNow = ChronoUnit.DAYS.between(Instant.now(), newExpiry);
+        assertTrue(daysFromNow >= 27 && daysFromNow <= 32);
+        assertEquals(legacyAccountExpiry, accountExpiry.truncatedTo(ChronoUnit.SECONDS));
+    }
+
+    @Test
+    void testAdminRejectsInvalidEnrollmentExtensionMonths() throws Exception {
+        Long studentId = seedStudent("student_user", "student@vera.lms");
+        Long programId = seedProgram("Invalid Extend Program");
+        Long enrollmentId = seedEnrollment(
+                studentId,
+                programId,
+                "ACTIVE",
+                Instant.now(),
+                Instant.now().plus(30, ChronoUnit.DAYS));
+
+        mockMvc.perform(patch("/api/admin/enrollments/" + enrollmentId + "/extend")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"months\":0}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

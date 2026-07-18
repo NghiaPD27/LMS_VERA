@@ -22,6 +22,7 @@ import vera.lms.repositories.LessonRepository;
 import vera.lms.repositories.ProgramRepository;
 import vera.lms.repositories.StudentLessonProgressRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -150,17 +151,21 @@ public class LessonService {
             throw new ForbiddenException("Only students can access lesson progress");
         }
 
-        boolean isEnrolled = enrollmentRepository.existsByStudentIdAndProgramIdAndStatus(
-                student.getId(), programId, EnrollmentStatus.ACTIVE);
+        boolean isEnrolled = enrollmentRepository.existsAccessibleEnrollment(
+                student.getId(), programId, EnrollmentStatus.ACTIVE, Instant.now());
         if (!isEnrolled) {
-            throw new ForbiddenException("Student is not enrolled in this program");
+            throw new ForbiddenException("Course enrollment is expired or unavailable");
         }
     }
 
     private void syncProgressToActiveEnrollments(Lesson lesson) {
         List<Enrollment> activeEnrollments = enrollmentRepository.findByProgramIdAndStatus(
                 lesson.getProgram().getId(), EnrollmentStatus.ACTIVE);
+        Instant now = Instant.now();
         for (Enrollment enrollment : activeEnrollments) {
+            if (enrollment.getExpiredAt() != null && enrollment.getExpiredAt().isBefore(now)) {
+                continue;
+            }
             createProgressIfMissing(enrollment.getStudent(), lesson);
         }
     }

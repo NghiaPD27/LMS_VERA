@@ -150,13 +150,16 @@ public class PasswordChangeE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void testTemporaryPasswordLockoutMeApi() throws Exception {
+    void testTemporaryPasswordStillAllowsMeApi() throws Exception {
         Long userId = createUser("student_lockout", "lockout@vera.lms", "TempPassword123", "STUDENT", true);
         createAccountAccess(userId, "ACTIVE", true);
 
         mockMvc.perform(get("/api/auth/me")
                 .header("Authorization", "Bearer mock-access-token"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.role").value("STUDENT"))
+                .andExpect(jsonPath("$.accountAccess.mustChangePassword").value(true));
     }
 
     @Test

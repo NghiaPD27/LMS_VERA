@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.EnrollmentDto.EnrollStudentRequest;
 import vera.lms.dtos.EnrollmentDto.AdminEnrollmentResponse;
+import vera.lms.dtos.EnrollmentDto.ExtendEnrollmentRequest;
 import vera.lms.dtos.EnrollmentDto.UpdateEnrollmentRequest;
 import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.enums.EnrollmentStatus;
@@ -21,11 +22,15 @@ import vera.lms.models.*;
 import vera.lms.repositories.*;
 import vera.lms.utils.PaginationUtils;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
 @Transactional
 public class EnrollmentService {
+
+    private static final int ENROLLMENT_ACCESS_MONTHS = 6;
 
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
@@ -53,38 +58,30 @@ public class EnrollmentService {
         Program program = programRepository.findById(request.programId())
                 .orElseThrow(() -> new ResourceNotFoundException("Program not found with id " + request.programId()));
 
-        if (student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
-            throw new BadRequestException("Only STUDENT users can be enrolled in a program");
-        }
+        return createActiveEnrollment(student, program);
+    }
 
+    public Enrollment createActiveEnrollment(User student, Program program) {
+        validateStudentCanEnroll(student);
         if (enrollmentRepository.existsByStudentIdAndStatus(student.getId(), EnrollmentStatus.ACTIVE)) {
             throw new ConflictException("Student already has an active enrollment");
         }
+
+        Instant enrolledAt = Instant.now();
+        Instant expiredAt = enrolledAt.atZone(ZoneOffset.UTC)
+                .plusMonths(ENROLLMENT_ACCESS_MONTHS)
+                .toInstant();
 
         Enrollment enrollment = Enrollment.builder()
                 .student(student)
                 .program(program)
                 .status(EnrollmentStatus.ACTIVE)
+                .enrolledAt(enrolledAt)
+                .expiredAt(expiredAt)
                 .build();
         enrollment = enrollmentRepository.save(enrollment);
 
-        List<Lesson> lessons = lessonRepository.findByProgramIdAndStatusOrderByLessonNumberAsc(
-                program.getId(), LessonStatus.PUBLISHED);
-        boolean firstUnlocked = true;
-        for (Lesson lesson : lessons) {
-            StudentLessonProgressId progressId = StudentLessonProgressId.builder()
-                    .studentId(student.getId())
-                    .lessonId(lesson.getId())
-                    .build();
-            StudentLessonProgress progress = StudentLessonProgress.builder()
-                    .id(progressId)
-                    .student(student)
-                    .lesson(lesson)
-                    .status(firstUnlocked ? LessonProgressStatus.VIDEO_IN_PROGRESS : LessonProgressStatus.LOCKED)
-                    .build();
-            progressRepository.save(progress);
-            firstUnlocked = false;
-        }
+        createInitialProgress(student, program);
 
         return enrollment;
     }
@@ -101,6 +98,21 @@ public class EnrollmentService {
         }
 
         enrollment.setStatus(newStatus);
+        return enrollmentRepository.save(enrollment);
+    }
+
+    public Enrollment extendEnrollment(Long id, ExtendEnrollmentRequest request) {
+        Enrollment enrollment = enrollmentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Enrollment not found with id " + id));
+
+        Instant now = Instant.now();
+        Instant currentExpiry = enrollment.getExpiredAt();
+        Instant baseTime = currentExpiry != null && currentExpiry.isAfter(now) ? currentExpiry : now;
+        Instant newExpiry = baseTime.atZone(ZoneOffset.UTC)
+                .plusMonths(request.months())
+                .toInstant();
+
+        enrollment.setExpiredAt(newExpiry);
         return enrollmentRepository.save(enrollment);
     }
 
@@ -159,7 +171,38 @@ public class EnrollmentService {
                 student.getEmail(),
                 program.getId(),
                 program.getName(),
-                enrollment.getStatus().name());
+                enrollment.getStatus().name(),
+                enrollment.getEnrolledAt(),
+                enrollment.getExpiredAt());
+    }
+
+    private void validateStudentCanEnroll(User student) {
+        if (student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
+            throw new BadRequestException("Only STUDENT users can be enrolled in a program");
+        }
+    }
+
+    private void createInitialProgress(User student, Program program) {
+        List<Lesson> lessons = lessonRepository.findByProgramIdAndStatusOrderByLessonNumberAsc(
+                program.getId(), LessonStatus.PUBLISHED);
+        boolean firstUnlocked = true;
+        for (Lesson lesson : lessons) {
+            StudentLessonProgressId progressId = StudentLessonProgressId.builder()
+                    .studentId(student.getId())
+                    .lessonId(lesson.getId())
+                    .build();
+            if (progressRepository.existsById(progressId)) {
+                continue;
+            }
+            StudentLessonProgress progress = StudentLessonProgress.builder()
+                    .id(progressId)
+                    .student(student)
+                    .lesson(lesson)
+                    .status(firstUnlocked ? LessonProgressStatus.VIDEO_IN_PROGRESS : LessonProgressStatus.LOCKED)
+                    .build();
+            progressRepository.save(progress);
+            firstUnlocked = false;
+        }
     }
 
     private Long parseOptionalLong(String value, String fieldName) {

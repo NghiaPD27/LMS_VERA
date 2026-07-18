@@ -10,12 +10,9 @@ import vera.lms.models.User;
 import vera.lms.repositories.AccountAccessRepository;
 
 import java.time.Instant;
-import java.time.ZoneOffset;
 
 @Service
 public class AccountAccessService {
-
-    private static final int STUDENT_ACCESS_MONTHS = 6;
 
     private final AccountAccessRepository accountAccessRepository;
 
@@ -31,19 +28,25 @@ public class AccountAccessService {
                 .build();
     }
 
+    public AccountAccess createSelfRegisteredStudentAccess(User user) {
+        return AccountAccess.builder()
+                .user(user)
+                .status(AccountStatus.ACTIVE)
+                .mustChangePassword(false)
+                .firstLoginAt(Instant.now())
+                .build();
+    }
+
     @Transactional
     public void initializeStudentFirstLoginIfNeeded(User user, AccountAccess accountAccess) {
-        if (accountAccess == null || accountAccess.getFirstLoginAt() != null || !isStudent(user)) {
+        if (accountAccess == null
+                || accountAccess.getFirstLoginAt() != null
+                || !isStudent(user)) {
             return;
         }
 
         Instant firstLoginAt = Instant.now();
         accountAccess.setFirstLoginAt(firstLoginAt);
-        if (accountAccess.getExpiredAt() == null) {
-            accountAccess.setExpiredAt(firstLoginAt.atZone(ZoneOffset.UTC)
-                    .plusMonths(STUDENT_ACCESS_MONTHS)
-                    .toInstant());
-        }
         accountAccessRepository.save(accountAccess);
     }
 
@@ -56,14 +59,6 @@ public class AccountAccessService {
         AccountAccess accountAccess = user.getAccountAccess();
         if (accountAccess == null) {
             return;
-        }
-
-        if (accountAccess.getExpiredAt() != null && accountAccess.getExpiredAt().isBefore(Instant.now())) {
-            if (accountAccess.getStatus() != AccountStatus.SUSPENDED) {
-                accountAccess.setStatus(AccountStatus.EXPIRED);
-                accountAccessRepository.save(accountAccess);
-            }
-            throw new ForbiddenException("Account access is expired");
         }
 
         if (accountAccess.getStatus() == AccountStatus.EXPIRED) {

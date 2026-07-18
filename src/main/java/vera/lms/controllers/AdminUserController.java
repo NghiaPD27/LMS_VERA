@@ -85,12 +85,4 @@ public class AdminUserController {
         User user = userService.updateUser(id, request, currentUser);
         return ResponseEntity.ok(userMapper.toResponse(user));
     }
-
-    @PatchMapping("/users/{id}/extend")
-    public ResponseEntity<AccountAccessResponse> extendAccount(
-            @PathVariable Long id,
-            @RequestBody @Valid ExtendAccountRequest request) {
-        var access = userService.extendAccount(id, request.months());
-        return ResponseEntity.ok(profileMapper.toAccountAccessResponse(access));
-    }
 }

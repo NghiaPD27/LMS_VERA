@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import vera.lms.dtos.EnrollmentDto.AdminEnrollmentResponse;
 import vera.lms.dtos.EnrollmentDto.EnrollStudentRequest;
 import vera.lms.dtos.EnrollmentDto.EnrollmentResponse;
+import vera.lms.dtos.EnrollmentDto.ExtendEnrollmentRequest;
 import vera.lms.dtos.EnrollmentDto.UpdateEnrollmentRequest;
 import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.mapping.EnrollmentMapper;
@@ -52,6 +53,14 @@ public class EnrollmentController {
             @PathVariable Long id,
             @RequestBody @Valid UpdateEnrollmentRequest request) {
         Enrollment enrollment = enrollmentService.updateEnrollmentStatus(id, request);
+        return ResponseEntity.ok(enrollmentMapper.toResponse(enrollment));
+    }
+
+    @PatchMapping("/api/admin/enrollments/{id}/extend")
+    public ResponseEntity<EnrollmentResponse> extendEnrollment(
+            @PathVariable Long id,
+            @RequestBody @Valid ExtendEnrollmentRequest request) {
+        Enrollment enrollment = enrollmentService.extendEnrollment(id, request);
         return ResponseEntity.ok(enrollmentMapper.toResponse(enrollment));
     }
 

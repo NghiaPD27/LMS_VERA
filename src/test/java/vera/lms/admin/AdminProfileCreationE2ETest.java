@@ -221,7 +221,7 @@ public class AdminProfileCreationE2ETest extends BaseIntegrationTest {
                 .andExpect(status().isOk());
 
         Integer initializedCheck = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM account_access WHERE user_id = ? AND first_login_at IS NOT NULL AND expired_at IS NOT NULL", 
+                "SELECT COUNT(*) FROM account_access WHERE user_id = ? AND first_login_at IS NOT NULL AND expired_at IS NULL",
                 Integer.class, userId);
         assertEquals(1, initializedCheck);
 

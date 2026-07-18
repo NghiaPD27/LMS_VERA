@@ -6,9 +6,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import vera.lms.BaseIntegrationTest;
 import vera.lms.dtos.AuthDto.LoginResponse;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -139,52 +136,6 @@ public class AdversarialSecurityTest extends BaseIntegrationTest {
         Integer activeTokensBAfter = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = ? AND revoked = false", Integer.class, userBId);
         assertEquals(1, activeTokensBAfter);
-    }
-
-    @Test
-    void testExtendAlreadyExpiredAccountBySmallDuration() throws Exception {
-        Long userId = createUser("student_expired_short", "expired_short@vera.lms", "Password123", "STUDENT", true);
-        // Account expired 15 days ago
-        Instant expiredAt = Instant.now().minus(15, ChronoUnit.DAYS);
-        jdbcTemplate.update("INSERT INTO account_access (user_id, status, must_change_password, expired_at) VALUES (?, 'EXPIRED', false, ?)",
-                userId, expiredAt);
-
-        // Admin extends by 1 month
-        String extendPayload = "{\"months\": 1}";
-        mockMvc.perform(patch("/api/admin/users/" + userId + "/extend")
-                .header("Authorization", "Bearer admin-token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(extendPayload))
-                .andExpect(status().isOk());
-
-        // Expect status in DB is ACTIVE
-        String status = jdbcTemplate.queryForObject("SELECT status FROM account_access WHERE user_id = ?", String.class, userId);
-        assertEquals("ACTIVE", status);
-
-        // Expect login is successful
-        String loginPayload = "{\"username\": \"student_expired_short\", \"password\": \"Password123\"}";
-        mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(loginPayload))
-                .andExpect(status().isOk());
-
-        // Verify rollback behavior:
-        Long userId2 = createUser("student_login_expired", "login_expired@vera.lms", "Password123", "STUDENT", true);
-        Instant expiredAt2 = Instant.now().minus(10, ChronoUnit.DAYS);
-        // Set initial status to ACTIVE
-        jdbcTemplate.update("INSERT INTO account_access (user_id, status, must_change_password, expired_at) VALUES (?, 'ACTIVE', false, ?)",
-                userId2, expiredAt2);
-
-        // Login fails due to expiration (ForbiddenException thrown)
-        String loginPayload2 = "{\"username\": \"student_login_expired\", \"password\": \"Password123\"}";
-        mockMvc.perform(post("/api/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(loginPayload2))
-                .andExpect(status().isForbidden());
-
-        // Assert that because of noRollbackFor, the database status is successfully updated to EXPIRED (not rolled back)
-        String status2 = jdbcTemplate.queryForObject("SELECT status FROM account_access WHERE user_id = ?", String.class, userId2);
-        assertEquals("EXPIRED", status2);
     }
 
     @Test

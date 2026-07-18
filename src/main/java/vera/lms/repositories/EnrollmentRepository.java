@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.models.Enrollment;
 
+import java.time.Instant;
 import java.util.List;
 
 @Repository
@@ -18,6 +19,20 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     List<Enrollment> findByProgramIdAndStatus(Long programId, EnrollmentStatus status);
     boolean existsByStudentIdAndStatus(Long studentId, EnrollmentStatus status);
     boolean existsByStudentIdAndProgramIdAndStatus(Long studentId, Long programId, EnrollmentStatus status);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(e) > 0 THEN true ELSE false END
+            FROM Enrollment e
+            WHERE e.student.id = :studentId
+            AND e.program.id = :programId
+            AND e.status = :status
+            AND (e.expiredAt IS NULL OR e.expiredAt >= :now)
+            """)
+    boolean existsAccessibleEnrollment(
+            @Param("studentId") Long studentId,
+            @Param("programId") Long programId,
+            @Param("status") EnrollmentStatus status,
+            @Param("now") Instant now);
 
     @EntityGraph(attributePaths = {"student", "student.studentProfile", "program"})
     List<Enrollment> findByStudentIdOrderByIdDesc(Long studentId);

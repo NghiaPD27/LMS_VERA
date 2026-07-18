@@ -151,12 +151,6 @@ public class UserDto {
         AccountAccessResponse accountAccess
     ) {}
 
-    public record ExtendAccountRequest(
-        @NotNull(message = "Months count is required")
-        @Min(value = 1, message = "Months count must be at least 1")
-        Integer months
-    ) {}
-
     public record AccountAccessResponse(
         Long userId,
         String status,

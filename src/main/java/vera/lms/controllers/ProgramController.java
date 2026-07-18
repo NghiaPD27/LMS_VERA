@@ -45,7 +45,7 @@ public class ProgramController {
 
     @PostMapping
     public ResponseEntity<ProgramResponse> createProgram(@RequestBody @Valid CreateProgramRequest request) {
-        Program program = programService.createProgram(request.name(), request.description());
+        Program program = programService.createProgram(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(programMapper.toResponse(program));
     }
 
@@ -65,7 +65,7 @@ public class ProgramController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ProgramResponse> updateProgram(@PathVariable Long id, @RequestBody @Valid CreateProgramRequest request) {
-        Program program = programService.updateProgram(id, request.name(), request.description());
+        Program program = programService.updateProgram(id, request);
         return ResponseEntity.ok(programMapper.toResponse(program));
     }
 
