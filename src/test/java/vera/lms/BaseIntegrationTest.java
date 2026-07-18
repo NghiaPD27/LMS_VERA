@@ -30,7 +30,10 @@ public abstract class BaseIntegrationTest {
 
     @BeforeEach
     void setUpDatabase() {
-        // Data isolation: truncate all tables except 'roles'
+        jdbcTemplate.execute("DELETE FROM student_lesson_progress");
+        jdbcTemplate.execute("DELETE FROM enrollments");
+        jdbcTemplate.execute("DELETE FROM lessons");
+        jdbcTemplate.execute("DELETE FROM programs");
         jdbcTemplate.execute("DELETE FROM refresh_tokens");
         jdbcTemplate.execute("DELETE FROM account_access");
         jdbcTemplate.execute("DELETE FROM student_profiles");

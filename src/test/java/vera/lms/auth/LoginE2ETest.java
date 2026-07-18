@@ -26,6 +26,18 @@ public class LoginE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testAdminLoginSuccessWithEmail() throws Exception {
+        String payload = "{\"username\": \"admin@vera.lms\", \"password\": \"AdminPassword123\"}";
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andExpect(jsonPath("$.refreshToken").exists())
+                .andExpect(jsonPath("$.mustChangePassword").value(false));
+    }
+
+    @Test
     void testStudentLoginSuccess() throws Exception {
         Long userId = createUser("student1", "student1@vera.lms", "TempPassword123", "STUDENT", true);
         createAccountAccess(userId, "ACTIVE", true);

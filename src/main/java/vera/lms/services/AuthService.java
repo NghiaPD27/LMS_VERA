@@ -18,6 +18,7 @@ import vera.lms.utils.JwtUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -55,7 +56,8 @@ public class AuthService {
             throw new BadRequestException("Password is required");
         }
 
-        User user = userRepository.findByUsername(request.username())
+        String loginIdentifier = request.username().trim();
+        User user = findByUsernameOrEmail(loginIdentifier)
                 .orElseThrow(() -> new UnauthorizedException("Invalid username or password"));
 
         boolean passwordMatches = passwordEncoder.matches(request.password(), user.getPassword());
@@ -82,6 +84,11 @@ public class AuthService {
         boolean mustChangePassword = accountAccessService.mustChangePassword(user);
 
         return new LoginResponse(accessToken, refreshTokenStr, mustChangePassword);
+    }
+
+    private Optional<User> findByUsernameOrEmail(String loginIdentifier) {
+        return userRepository.findByUsername(loginIdentifier)
+                .or(() -> userRepository.findByEmail(loginIdentifier));
     }
 
     public LoginResponse refresh(RefreshRequest request) {

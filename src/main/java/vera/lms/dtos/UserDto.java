@@ -43,6 +43,17 @@ public class UserDto {
         boolean mustChangePassword
     ) {}
 
+    public record AdminStudentResponse(
+        Long id,
+        String username,
+        String email,
+        String firstName,
+        String lastName,
+        String phoneNumber,
+        boolean enabled,
+        String status
+    ) {}
+
     public record CreateTeacherRequest(
         @NotBlank(message = "Username is required")
         @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
