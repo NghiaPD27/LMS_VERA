@@ -69,6 +69,7 @@ public class SecurityConfig {
                                 "/v3/api-docs",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/webhooks/sepay").permitAll()
@@ -82,7 +83,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/programs/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/lessons/{lessonId}/video-playback").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/lessons/{lessonId}/video-progress").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/lessons/{lessonId}/quiz").hasAnyRole("ADMIN", "STUDENT")
                         .requestMatchers("/api/lessons/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/quizzes/{quizId}/attempts").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-attempts/{attemptId}/submit").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/enrollments").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/enrollments/**").hasRole("ADMIN")
                         .requestMatchers("/api/student/purchases/**").hasRole("STUDENT")

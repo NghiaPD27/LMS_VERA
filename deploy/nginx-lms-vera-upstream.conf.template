@@ -1,0 +1,4 @@
+upstream lms_vera_backend {
+    server 127.0.0.1:{{UPSTREAM_PORT}};
+    keepalive 32;
+}

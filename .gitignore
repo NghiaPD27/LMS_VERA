@@ -34,4 +34,6 @@ build/
 
 .agents
 .env
+deploy/.env
 *.md
+env_example
