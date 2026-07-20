@@ -106,6 +106,45 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testAdminCanGetCurrentLessonVideo() throws Exception {
+        Long programId = seedProgram("Read Video Program");
+        Long lessonId = seedLesson(programId, 1, "PUBLISHED");
+        attachVideo(lessonId, 620);
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lessonId").value(lessonId))
+                .andExpect(jsonPath("$.bunnyVideoId").value("bunny-video-1"))
+                .andExpect(jsonPath("$.libraryId").value("library-1"))
+                .andExpect(jsonPath("$.durationSeconds").value(620))
+                .andExpect(jsonPath("$.thumbnailUrl").value("https://cdn.test/thumb.jpg"))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.updatedAt").exists());
+    }
+
+    @Test
+    void testAdminGetsNotFoundWhenLessonHasNoVideo() throws Exception {
+        Long programId = seedProgram("No Video Program");
+        Long lessonId = seedLesson(programId, 1, "PUBLISHED");
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Video not found for lesson id " + lessonId));
+    }
+
+    @Test
+    void testStudentCannotGetAdminLessonVideoMetadata() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void testAdminCanCreateTusUploadSessionForLessonVideoUpload() throws Exception {
         Long programId = seedProgram("Upload Session Program");
         Long lessonId = seedLesson(programId, 1, "PUBLISHED");
@@ -335,6 +374,33 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
                         .content("{\"currentSecond\":540,\"furthestWatchedSecond\":540}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Video progress jump is too large"));
+    }
+
+    @Test
+    void testAbnormalProgressJumpDoesNotMutateSavedProgress() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(post("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentSecond\":120,\"furthestWatchedSecond\":120}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentSecond\":300,\"furthestWatchedSecond\":300}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Video progress jump is too large"));
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentSecond").value(120))
+                .andExpect(jsonPath("$.furthestWatchedSecond").value(120))
+                .andExpect(jsonPath("$.watchedPercentage").value(20))
+                .andExpect(jsonPath("$.completed").value(false))
+                .andExpect(jsonPath("$.lessonProgressStatus").value("VIDEO_IN_PROGRESS"));
     }
 
     @Test

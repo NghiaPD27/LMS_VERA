@@ -113,7 +113,7 @@ public class VideoService {
     }
 
     public LessonVideoResponse syncLessonVideo(Long lessonId) {
-        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        LessonVideo lessonVideo = findLessonVideo(lessonId);
         BunnyVideoMetadata metadata = bunnyVideoService.getVideoMetadata(lessonVideo);
 
         lessonVideo.setDurationSeconds(metadata.durationSeconds());
@@ -123,8 +123,13 @@ public class VideoService {
     }
 
     @Transactional(readOnly = true)
+    public LessonVideoResponse getLessonVideo(Long lessonId) {
+        return toLessonVideoResponse(findLessonVideo(lessonId));
+    }
+
+    @Transactional(readOnly = true)
     public VideoPlaybackResponse getPlayback(Long lessonId, User student) {
-        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        LessonVideo lessonVideo = findLessonVideo(lessonId);
         ensureVideoReady(lessonVideo);
         ensureStudentCanAccessLessonVideo(lessonId, student);
         return new VideoPlaybackResponse(
@@ -137,7 +142,7 @@ public class VideoService {
     }
 
     public VideoProgressResponse updateProgress(Long lessonId, User student, UpdateVideoProgressRequest request) {
-        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        LessonVideo lessonVideo = findLessonVideo(lessonId);
         ensureVideoReady(lessonVideo);
         StudentLessonProgress lessonProgress = ensureStudentCanAccessLessonVideo(lessonId, student);
 
@@ -171,7 +176,7 @@ public class VideoService {
 
     @Transactional(readOnly = true)
     public Optional<VideoProgressResponse> getProgress(Long lessonId, User student) {
-        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        LessonVideo lessonVideo = findLessonVideo(lessonId);
         ensureVideoReady(lessonVideo);
         StudentLessonProgress lessonProgress = ensureStudentCanAccessLessonVideo(lessonId, student);
 
@@ -182,7 +187,7 @@ public class VideoService {
 
     @Transactional(readOnly = true)
     public LearningStateResponse getLearningState(Long lessonId, User student) {
-        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        LessonVideo lessonVideo = findLessonVideo(lessonId);
         StudentLessonAccess access = ensureStudentCanAccessLesson(lessonId, student);
         Optional<VideoProgress> progress = videoProgressRepository
                 .findByStudentIdAndLessonVideoId(student.getId(), lessonVideo.getId());
@@ -203,7 +208,7 @@ public class VideoService {
                 access.enrollment().getExpiredAt());
     }
 
-    private LessonVideo getLessonVideo(Long lessonId) {
+    private LessonVideo findLessonVideo(Long lessonId) {
         return lessonVideoRepository.findByLessonId(lessonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Video not found for lesson id " + lessonId));
     }

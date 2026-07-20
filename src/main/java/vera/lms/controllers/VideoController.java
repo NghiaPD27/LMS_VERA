@@ -28,6 +28,11 @@ public class VideoController {
         this.videoService = videoService;
     }
 
+    @GetMapping("/api/lessons/{lessonId}/video")
+    public ResponseEntity<LessonVideoResponse> getLessonVideo(@PathVariable Long lessonId) {
+        return ResponseEntity.ok(videoService.getLessonVideo(lessonId));
+    }
+
     @PostMapping("/api/lessons/{lessonId}/video")
     public ResponseEntity<LessonVideoResponse> upsertLessonVideo(
             @PathVariable Long lessonId,
