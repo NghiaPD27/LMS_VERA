@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import vera.lms.dtos.VideoDto.CreateVideoUploadSessionRequest;
+import vera.lms.dtos.VideoDto.LearningStateResponse;
 import vera.lms.dtos.VideoDto.LessonVideoResponse;
 import vera.lms.dtos.VideoDto.UpdateVideoProgressRequest;
 import vera.lms.dtos.VideoDto.UpsertLessonVideoRequest;
@@ -51,6 +52,22 @@ public class VideoController {
             @PathVariable Long lessonId,
             @AuthenticationPrincipal User student) {
         return ResponseEntity.ok(videoService.getPlayback(lessonId, student));
+    }
+
+    @GetMapping("/api/lessons/{lessonId}/video-progress")
+    public ResponseEntity<VideoProgressResponse> getLessonVideoProgress(
+            @PathVariable Long lessonId,
+            @AuthenticationPrincipal User student) {
+        return videoService.getProgress(lessonId, student)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    @GetMapping("/api/lessons/{lessonId}/learning-state")
+    public ResponseEntity<LearningStateResponse> getLessonLearningState(
+            @PathVariable Long lessonId,
+            @AuthenticationPrincipal User student) {
+        return ResponseEntity.ok(videoService.getLearningState(lessonId, student));
     }
 
     @PostMapping("/api/lessons/{lessonId}/video-progress")

@@ -2,12 +2,14 @@ package vera.lms.services;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vera.lms.dtos.VideoDto.LearningStateResponse;
 import vera.lms.dtos.VideoDto.LessonVideoResponse;
 import vera.lms.dtos.VideoDto.CreateVideoUploadSessionRequest;
 import vera.lms.dtos.VideoDto.UpdateVideoProgressRequest;
 import vera.lms.dtos.VideoDto.UpsertLessonVideoRequest;
 import vera.lms.dtos.VideoDto.VideoUploadSessionResponse;
 import vera.lms.dtos.VideoDto.VideoPlaybackResponse;
+import vera.lms.dtos.VideoDto.VideoProgressSnapshot;
 import vera.lms.dtos.VideoDto.VideoProgressResponse;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.enums.LessonProgressStatus;
@@ -17,6 +19,7 @@ import vera.lms.enums.VideoStatus;
 import vera.lms.exceptions.BadRequestException;
 import vera.lms.exceptions.ForbiddenException;
 import vera.lms.exceptions.ResourceNotFoundException;
+import vera.lms.models.Enrollment;
 import vera.lms.models.Lesson;
 import vera.lms.models.LessonVideo;
 import vera.lms.models.StudentLessonProgress;
@@ -25,10 +28,12 @@ import vera.lms.models.VideoProgress;
 import vera.lms.repositories.EnrollmentRepository;
 import vera.lms.repositories.LessonRepository;
 import vera.lms.repositories.LessonVideoRepository;
+import vera.lms.repositories.QuizRepository;
 import vera.lms.repositories.StudentLessonProgressRepository;
 import vera.lms.repositories.VideoProgressRepository;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -44,6 +49,7 @@ public class VideoService {
     private final StudentLessonProgressRepository lessonProgressRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final BunnyVideoService bunnyVideoService;
+    private final QuizRepository quizRepository;
 
     public VideoService(
             LessonRepository lessonRepository,
@@ -51,13 +57,15 @@ public class VideoService {
             VideoProgressRepository videoProgressRepository,
             StudentLessonProgressRepository lessonProgressRepository,
             EnrollmentRepository enrollmentRepository,
-            BunnyVideoService bunnyVideoService) {
+            BunnyVideoService bunnyVideoService,
+            QuizRepository quizRepository) {
         this.lessonRepository = lessonRepository;
         this.lessonVideoRepository = lessonVideoRepository;
         this.videoProgressRepository = videoProgressRepository;
         this.lessonProgressRepository = lessonProgressRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.bunnyVideoService = bunnyVideoService;
+        this.quizRepository = quizRepository;
     }
 
     public LessonVideoResponse upsertLessonVideo(Long lessonId, UpsertLessonVideoRequest request) {
@@ -161,12 +169,50 @@ public class VideoService {
         return toVideoProgressResponse(progress, lessonProgress);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<VideoProgressResponse> getProgress(Long lessonId, User student) {
+        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        ensureVideoReady(lessonVideo);
+        StudentLessonProgress lessonProgress = ensureStudentCanAccessLessonVideo(lessonId, student);
+
+        return videoProgressRepository
+                .findByStudentIdAndLessonVideoId(student.getId(), lessonVideo.getId())
+                .map(progress -> toVideoProgressResponse(progress, lessonProgress));
+    }
+
+    @Transactional(readOnly = true)
+    public LearningStateResponse getLearningState(Long lessonId, User student) {
+        LessonVideo lessonVideo = getLessonVideo(lessonId);
+        StudentLessonAccess access = ensureStudentCanAccessLesson(lessonId, student);
+        Optional<VideoProgress> progress = videoProgressRepository
+                .findByStudentIdAndLessonVideoId(student.getId(), lessonVideo.getId());
+        boolean hasQuiz = quizRepository.existsByLessonId(lessonId);
+        boolean quizAvailable = hasQuiz
+                && access.lessonProgress().getStatus() != LessonProgressStatus.LOCKED
+                && access.lessonProgress().getStatus() != LessonProgressStatus.VIDEO_IN_PROGRESS;
+
+        return new LearningStateResponse(
+                lessonId,
+                access.lesson().getStatus().name(),
+                lessonVideo.getStatus().name(),
+                progress.map(videoProgress -> toVideoProgressSnapshot(videoProgress, access.lessonProgress()))
+                        .orElseGet(() -> defaultVideoProgressSnapshot(access.lessonProgress())),
+                quizAvailable,
+                hasQuiz,
+                access.enrollment().getStatus().name(),
+                access.enrollment().getExpiredAt());
+    }
+
     private LessonVideo getLessonVideo(Long lessonId) {
         return lessonVideoRepository.findByLessonId(lessonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Video not found for lesson id " + lessonId));
     }
 
     private StudentLessonProgress ensureStudentCanAccessLessonVideo(Long lessonId, User student) {
+        return ensureStudentCanAccessLesson(lessonId, student).lessonProgress();
+    }
+
+    private StudentLessonAccess ensureStudentCanAccessLesson(Long lessonId, User student) {
         if (student == null || student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
             throw new ForbiddenException("Only students can access lesson video");
         }
@@ -177,11 +223,9 @@ public class VideoService {
             throw new ForbiddenException("Lesson is not published");
         }
 
-        boolean isEnrolled = enrollmentRepository.existsAccessibleEnrollment(
-                student.getId(), lesson.getProgram().getId(), EnrollmentStatus.ACTIVE, Instant.now());
-        if (!isEnrolled) {
-            throw new ForbiddenException("Course enrollment is expired or unavailable");
-        }
+        Enrollment enrollment = enrollmentRepository
+                .findAccessibleEnrollment(student.getId(), lesson.getProgram().getId(), EnrollmentStatus.ACTIVE, Instant.now())
+                .orElseThrow(() -> new ForbiddenException("Course enrollment is expired or unavailable"));
 
         StudentLessonProgress progress = lessonProgressRepository
                 .findByStudentIdAndLessonId(student.getId(), lessonId)
@@ -189,7 +233,7 @@ public class VideoService {
         if (progress.getStatus() == LessonProgressStatus.LOCKED) {
             throw new ForbiddenException("Lesson is locked");
         }
-        return progress;
+        return new StudentLessonAccess(lesson, progress, enrollment);
     }
 
     private void ensureVideoReady(LessonVideo lessonVideo) {
@@ -279,4 +323,28 @@ public class VideoService {
                 lessonProgress.getStatus().name(),
                 progress.getUpdatedAt());
     }
+
+    private VideoProgressSnapshot toVideoProgressSnapshot(VideoProgress progress, StudentLessonProgress lessonProgress) {
+        return new VideoProgressSnapshot(
+                progress.getCurrentSecond(),
+                progress.getFurthestWatchedSecond(),
+                progress.getWatchedPercentage(),
+                progress.isCompleted(),
+                lessonProgress.getStatus().name());
+    }
+
+    private VideoProgressSnapshot defaultVideoProgressSnapshot(StudentLessonProgress lessonProgress) {
+        return new VideoProgressSnapshot(
+                0,
+                0,
+                0,
+                false,
+                lessonProgress.getStatus().name());
+    }
+
+    private record StudentLessonAccess(
+            Lesson lesson,
+            StudentLessonProgress lessonProgress,
+            Enrollment enrollment
+    ) {}
 }

@@ -81,4 +81,23 @@ public class VideoDto {
             String lessonProgressStatus,
             Instant updatedAt
     ) {}
+
+    public record VideoProgressSnapshot(
+            int currentSecond,
+            int furthestWatchedSecond,
+            int watchedPercentage,
+            boolean completed,
+            String lessonProgressStatus
+    ) {}
+
+    public record LearningStateResponse(
+            Long lessonId,
+            String lessonStatus,
+            String videoStatus,
+            VideoProgressSnapshot progress,
+            boolean quizAvailable,
+            boolean hasQuiz,
+            String enrollmentStatus,
+            Instant expiredAt
+    ) {}
 }

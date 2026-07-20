@@ -89,6 +89,10 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
         return lessonId;
     }
 
+    private void seedQuiz(Long lessonId) {
+        jdbcTemplate.update("INSERT INTO quizzes (lesson_id, title) VALUES (?, ?)", lessonId, "Video Quiz");
+    }
+
     @Test
     void testAdminCanAttachVideoAndStudentCanGetPlaybackWhenUnlocked() throws Exception {
         Long lessonId = seedAccessibleVideoLesson(600);
@@ -198,6 +202,59 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testStudentCanGetSavedVideoProgress() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(post("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentSecond\":120,\"furthestWatchedSecond\":120}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lessonId").value(lessonId))
+                .andExpect(jsonPath("$.lessonVideoId").exists())
+                .andExpect(jsonPath("$.currentSecond").value(120))
+                .andExpect(jsonPath("$.furthestWatchedSecond").value(120))
+                .andExpect(jsonPath("$.watchedPercentage").value(20))
+                .andExpect(jsonPath("$.completed").value(false))
+                .andExpect(jsonPath("$.lessonProgressStatus").value("VIDEO_IN_PROGRESS"))
+                .andExpect(jsonPath("$.updatedAt").exists());
+    }
+
+    @Test
+    void testStudentGetsNoContentWhenVideoProgressDoesNotExist() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void testStudentCanGetLearningStateWithDefaultProgress() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/learning-state")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lessonId").value(lessonId))
+                .andExpect(jsonPath("$.lessonStatus").value("PUBLISHED"))
+                .andExpect(jsonPath("$.videoStatus").value("READY"))
+                .andExpect(jsonPath("$.progress.currentSecond").value(0))
+                .andExpect(jsonPath("$.progress.furthestWatchedSecond").value(0))
+                .andExpect(jsonPath("$.progress.watchedPercentage").value(0))
+                .andExpect(jsonPath("$.progress.completed").value(false))
+                .andExpect(jsonPath("$.progress.lessonProgressStatus").value("VIDEO_IN_PROGRESS"))
+                .andExpect(jsonPath("$.quizAvailable").value(false))
+                .andExpect(jsonPath("$.hasQuiz").value(false))
+                .andExpect(jsonPath("$.enrollmentStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.expiredAt").exists());
+    }
+
+    @Test
     void testVideoProgressAtNinetyPercentUnlocksQuiz() throws Exception {
         Long lessonId = seedAccessibleVideoLesson(600);
 
@@ -223,6 +280,31 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
                 String.class,
                 lessonId);
         assertEquals("QUIZ_AVAILABLE", lessonProgressStatus);
+    }
+
+    @Test
+    void testLearningStateShowsQuizAvailabilityAndSavedProgress() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+        seedQuiz(lessonId);
+
+        for (int second : new int[]{120, 240, 360, 480, 540}) {
+            mockMvc.perform(post("/api/lessons/" + lessonId + "/video-progress")
+                            .header("Authorization", "Bearer student-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"currentSecond\":" + second + ",\"furthestWatchedSecond\":" + second + "}"))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/learning-state")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasQuiz").value(true))
+                .andExpect(jsonPath("$.quizAvailable").value(true))
+                .andExpect(jsonPath("$.progress.currentSecond").value(540))
+                .andExpect(jsonPath("$.progress.furthestWatchedSecond").value(540))
+                .andExpect(jsonPath("$.progress.watchedPercentage").value(90))
+                .andExpect(jsonPath("$.progress.completed").value(true))
+                .andExpect(jsonPath("$.progress.lessonProgressStatus").value("QUIZ_AVAILABLE"));
     }
 
     @Test
@@ -280,5 +362,18 @@ class VideoProgressE2ETest extends BaseIntegrationTest {
                         .header("Authorization", "Bearer student-token"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("Lesson is locked"));
+    }
+
+    @Test
+    void testAdminCannotUseStudentLearningApis() throws Exception {
+        Long lessonId = seedAccessibleVideoLesson(600);
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/learning-state")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/lessons/" + lessonId + "/video-progress")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isForbidden());
     }
 }

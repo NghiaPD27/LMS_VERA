@@ -11,6 +11,7 @@ import java.util.Optional;
 @Repository
 public interface QuizRepository extends JpaRepository<Quiz, Long> {
     Optional<Quiz> findByLessonId(Long lessonId);
+    boolean existsByLessonId(Long lessonId);
 
     @Query("SELECT q FROM Quiz q WHERE q.id = :id")
     Optional<Quiz> findWithQuestionsById(@Param("id") Long id);

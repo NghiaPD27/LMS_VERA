@@ -36,4 +36,5 @@ build/
 .env
 deploy/.env
 *.md
+FRONTEND_UPDATE_COURSE_ACCESS.md
 env_example

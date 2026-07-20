@@ -12,6 +12,7 @@ import vera.lms.models.Enrollment;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
@@ -29,6 +30,19 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             AND (e.expiredAt IS NULL OR e.expiredAt >= :now)
             """)
     boolean existsAccessibleEnrollment(
+            @Param("studentId") Long studentId,
+            @Param("programId") Long programId,
+            @Param("status") EnrollmentStatus status,
+            @Param("now") Instant now);
+
+    @Query("""
+            SELECT e FROM Enrollment e
+            WHERE e.student.id = :studentId
+            AND e.program.id = :programId
+            AND e.status = :status
+            AND (e.expiredAt IS NULL OR e.expiredAt >= :now)
+            """)
+    Optional<Enrollment> findAccessibleEnrollment(
             @Param("studentId") Long studentId,
             @Param("programId") Long programId,
             @Param("status") EnrollmentStatus status,
