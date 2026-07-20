@@ -35,10 +35,23 @@ public class QuizQuestion {
     private List<QuizOption> options = new ArrayList<>();
 
     public void replaceOptions(List<QuizOption> replacementOptions) {
-        options.clear();
-        for (QuizOption option : replacementOptions) {
-            option.setQuestion(this);
-            options.add(option);
+        for (int i = 0; i < replacementOptions.size(); i++) {
+            QuizOption replacement = replacementOptions.get(i);
+            QuizOption option;
+            if (i < options.size()) {
+                option = options.get(i);
+            } else {
+                option = new QuizOption();
+                option.setQuestion(this);
+                options.add(option);
+            }
+            option.setOptionText(replacement.getOptionText());
+            option.setCorrect(replacement.isCorrect());
+            option.setPosition(i + 1);
+        }
+
+        while (options.size() > replacementOptions.size()) {
+            options.remove(options.size() - 1);
         }
     }
 }

@@ -145,6 +145,57 @@ class QuizE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testAdminCanAddQuestionToExistingQuiz() throws Exception {
+        Long programId = seedProgram("Quiz Update Program");
+        Long lessonId = seedLesson(programId, 1);
+        createQuiz(lessonId);
+
+        mockMvc.perform(post("/api/lessons/" + lessonId + "/quiz")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Updated Lesson Review Quiz",
+                                  "questions": [
+                                    {
+                                      "questionText": "Which greeting is formal?",
+                                      "options": [
+                                        {"optionText": "Good morning", "correct": true},
+                                        {"optionText": "Yo", "correct": false}
+                                      ]
+                                    },
+                                    {
+                                      "questionText": "What means goodbye?",
+                                      "options": [
+                                        {"optionText": "Hello", "correct": false},
+                                        {"optionText": "See you later", "correct": true}
+                                      ]
+                                    },
+                                    {
+                                      "questionText": "Which phrase is polite?",
+                                      "options": [
+                                        {"optionText": "Please", "correct": true},
+                                        {"optionText": "Move", "correct": false}
+                                      ]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Updated Lesson Review Quiz"))
+                .andExpect(jsonPath("$.questions.length()").value(3))
+                .andExpect(jsonPath("$.questions[2].questionText").value("Which phrase is polite?"))
+                .andExpect(jsonPath("$.questions[2].position").value(3));
+
+        Long quizId = quizIdForLesson(lessonId);
+        Integer questionCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = ?",
+                Integer.class,
+                quizId);
+        assertEquals(3, questionCount);
+    }
+
+    @Test
     void testStudentCannotStartQuizBeforeVideoCompleted() throws Exception {
         Long lessonId = seedAccessibleQuizLesson(false);
         Long quizId = quizIdForLesson(lessonId);

@@ -39,10 +39,23 @@ public class Quiz {
     private Instant updatedAt;
 
     public void replaceQuestions(List<QuizQuestion> replacementQuestions) {
-        questions.clear();
-        for (QuizQuestion question : replacementQuestions) {
-            question.setQuiz(this);
-            questions.add(question);
+        for (int i = 0; i < replacementQuestions.size(); i++) {
+            QuizQuestion replacement = replacementQuestions.get(i);
+            QuizQuestion question;
+            if (i < questions.size()) {
+                question = questions.get(i);
+            } else {
+                question = new QuizQuestion();
+                question.setQuiz(this);
+                questions.add(question);
+            }
+            question.setQuestionText(replacement.getQuestionText());
+            question.setPosition(i + 1);
+            question.replaceOptions(replacement.getOptions());
+        }
+
+        while (questions.size() > replacementQuestions.size()) {
+            questions.remove(questions.size() - 1);
         }
     }
 
