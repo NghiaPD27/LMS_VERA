@@ -50,7 +50,7 @@ jobs:
         run: |
           mkdir -p deploy
           printf '%s\n' "$ENV_CONTENT" > deploy/.env
-          chmod 600 deploy/.env
+          chmod 644 deploy/.env
 
       - name: Copy Deploy Scripts and .env via SCP
         uses: appleboy/scp-action@v0.1.7
