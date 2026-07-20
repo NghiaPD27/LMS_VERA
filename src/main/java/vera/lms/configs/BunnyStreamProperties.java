@@ -25,12 +25,12 @@ public record BunnyStreamProperties(
 
     public String playbackBaseUrlOrDefault() {
         if (!isBlank(playbackBaseUrl)) {
-            return playbackBaseUrl.trim();
+            return normalizePlaybackBaseUrl(playbackBaseUrl.trim());
         }
         if (!isBlank(libraryId)) {
-            return "https://iframe.mediadelivery.net/play/" + libraryId.trim();
+            return "https://vz-" + libraryId.trim() + ".b-cdn.net";
         }
-        return "https://iframe.mediadelivery.net/play";
+        return "https://vz.b-cdn.net";
     }
 
     public void requireRealUploadConfig() {
@@ -41,5 +41,21 @@ public record BunnyStreamProperties(
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private String normalizePlaybackBaseUrl(String value) {
+        String normalized = value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        String iframePrefix = "https://iframe.mediadelivery.net/play/";
+        if (normalized.startsWith(iframePrefix)) {
+            String configuredLibraryId = normalized.substring(iframePrefix.length());
+            int slashIndex = configuredLibraryId.indexOf('/');
+            if (slashIndex >= 0) {
+                configuredLibraryId = configuredLibraryId.substring(0, slashIndex);
+            }
+            if (!configuredLibraryId.isBlank()) {
+                return "https://vz-" + configuredLibraryId + ".b-cdn.net";
+            }
+        }
+        return normalized;
     }
 }

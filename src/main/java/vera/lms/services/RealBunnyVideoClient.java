@@ -105,7 +105,12 @@ public class RealBunnyVideoClient implements BunnyVideoClient {
         if (isBlank(thumbnailFileName)) {
             return lessonVideo.getThumbnailUrl();
         }
-        return "https://vz-" + lessonVideo.getLibraryId() + ".b-cdn.net/"
+        String playbackBaseUrl = bunnyStreamProperties.playbackBaseUrlOrDefault();
+        String normalizedBaseUrl = playbackBaseUrl.endsWith("/")
+                ? playbackBaseUrl.substring(0, playbackBaseUrl.length() - 1)
+                : playbackBaseUrl;
+        return normalizedBaseUrl
+                + "/"
                 + lessonVideo.getBunnyVideoId()
                 + "/"
                 + thumbnailFileName;
