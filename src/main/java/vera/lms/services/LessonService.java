@@ -3,6 +3,7 @@ package vera.lms.services;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.LessonDto.CreateLessonRequest;
+import vera.lms.dtos.LessonDto.LessonResponse;
 import vera.lms.dtos.LessonDto.UpdateLessonRequest;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.enums.LessonProgressStatus;
@@ -24,7 +25,9 @@ import vera.lms.repositories.StudentLessonProgressRepository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -106,16 +109,22 @@ public class LessonService {
     }
 
     @Transactional(readOnly = true)
-    public List<Lesson> getLessonsForStudent(Long programId, User student) {
+    public List<LessonResponse> getLessonsForStudent(Long programId, User student) {
         ensureStudentEnrolled(programId, student);
 
-        List<StudentLessonProgress> progresses = progressRepository.findByStudentId(student.getId());
-        return progresses.stream()
+        List<Lesson> lessons = lessonRepository.findByProgramIdAndStatusOrderByLessonNumberAsc(
+                programId, LessonStatus.PUBLISHED);
+        Map<Long, LessonProgressStatus> progressByLessonId = progressRepository.findByStudentId(student.getId()).stream()
                 .filter(progress -> progress.getLesson().getProgram().getId().equals(programId))
-                .filter(progress -> progress.getLesson().getStatus() == LessonStatus.PUBLISHED)
-                .filter(progress -> progress.getStatus() != LessonProgressStatus.LOCKED)
-                .map(StudentLessonProgress::getLesson)
-                .sorted((left, right) -> Integer.compare(left.getLessonNumber(), right.getLessonNumber()))
+                .collect(Collectors.toMap(
+                        progress -> progress.getLesson().getId(),
+                        StudentLessonProgress::getStatus,
+                        (current, ignored) -> current));
+
+        return lessons.stream()
+                .map(lesson -> toStudentLessonResponse(
+                        lesson,
+                        progressByLessonId.getOrDefault(lesson.getId(), LessonProgressStatus.LOCKED)))
                 .toList();
     }
 
@@ -156,6 +165,18 @@ public class LessonService {
         if (!isEnrolled) {
             throw new ForbiddenException("Course enrollment is expired or unavailable");
         }
+    }
+
+    private LessonResponse toStudentLessonResponse(Lesson lesson, LessonProgressStatus progressStatus) {
+        return new LessonResponse(
+                lesson.getId(),
+                lesson.getProgram().getId(),
+                lesson.getName(),
+                lesson.getLessonNumber(),
+                lesson.getContent(),
+                lesson.getStatus().name(),
+                progressStatus.name(),
+                progressStatus == LessonProgressStatus.LOCKED);
     }
 
     private void syncProgressToActiveEnrollments(Lesson lesson) {

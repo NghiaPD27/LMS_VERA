@@ -8,5 +8,7 @@ import vera.lms.models.Lesson;
 @Mapper(componentModel = "spring")
 public interface LessonMapper {
     @Mapping(source = "program.id", target = "programId")
+    @Mapping(target = "lessonProgressStatus", ignore = true)
+    @Mapping(target = "locked", ignore = true)
     LessonDto.LessonResponse toResponse(Lesson lesson);
 }

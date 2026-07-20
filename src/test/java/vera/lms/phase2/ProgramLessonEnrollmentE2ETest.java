@@ -151,7 +151,7 @@ class ProgramLessonEnrollmentE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void testStudentOnlySeesPublishedUnlockedLessons() throws Exception {
+    void testStudentSeesPublishedLessonPathWithLockedLessons() throws Exception {
         Long studentId = seedStudent("student_user", "student@vera.lms");
         Long programId = seedProgram("Visibility Program");
         seedLesson(programId, "Lesson 1", 1, "PUBLISHED");
@@ -167,9 +167,15 @@ class ProgramLessonEnrollmentE2ETest extends BaseIntegrationTest {
         mockMvc.perform(get("/api/programs/" + programId + "/lessons")
                         .header("Authorization", "Bearer student-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].name").value("Lesson 1"))
-                .andExpect(jsonPath("$[0].status").value("PUBLISHED"));
+                .andExpect(jsonPath("$[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$[0].lessonProgressStatus").value("VIDEO_IN_PROGRESS"))
+                .andExpect(jsonPath("$[0].locked").value(false))
+                .andExpect(jsonPath("$[1].name").value("Lesson 2"))
+                .andExpect(jsonPath("$[1].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$[1].lessonProgressStatus").value("LOCKED"))
+                .andExpect(jsonPath("$[1].locked").value(true));
     }
 
     @Test

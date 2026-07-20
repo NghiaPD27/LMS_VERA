@@ -24,5 +24,14 @@ public class LessonDto {
         String content
     ) {}
 
-    public record LessonResponse(Long id, Long programId, String name, int lessonNumber, String content, String status) {}
+    public record LessonResponse(
+            Long id,
+            Long programId,
+            String name,
+            int lessonNumber,
+            String content,
+            String status,
+            String lessonProgressStatus,
+            Boolean locked
+    ) {}
 }

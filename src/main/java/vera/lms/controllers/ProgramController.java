@@ -87,12 +87,11 @@ public class ProgramController {
     public ResponseEntity<List<LessonResponse>> getProgramLessons(
             @PathVariable Long programId,
             @AuthenticationPrincipal User currentUser) {
-        List<Lesson> lessons = currentUser.getRole().getName() == RoleName.ADMIN
-                ? lessonService.getLessonsForProgram(programId)
+        List<LessonResponse> response = currentUser.getRole().getName() == RoleName.ADMIN
+                ? lessonService.getLessonsForProgram(programId).stream()
+                        .map(lessonMapper::toResponse)
+                        .toList()
                 : lessonService.getLessonsForStudent(programId, currentUser);
-        List<LessonResponse> response = lessons.stream()
-                .map(lessonMapper::toResponse)
-                .toList();
         return ResponseEntity.ok(response);
     }
 }
