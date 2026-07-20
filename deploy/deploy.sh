@@ -145,6 +145,32 @@ cleanup_new_container() {
   fi
 }
 
+env_file_value() {
+  local key="$1"
+  awk -v key="$key" '
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      sub(/\r$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' "$ENV_FILE"
+}
+
+DOCKER_NETWORK="${DOCKER_NETWORK:-$(env_file_value DOCKER_NETWORK)}"
+DOCKER_NETWORK="${DOCKER_NETWORK:-$(env_file_value APP_DOCKER_NETWORK)}"
+
+if [[ -n "$DOCKER_NETWORK" ]]; then
+  if ! docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1; then
+    echo "Docker network not found: $DOCKER_NETWORK"
+    echo "Create it on the VPS first, then attach PostgreSQL to that network."
+    exit 1
+  fi
+fi
+
 echo "Pulling image: $IMAGE"
 docker pull "$IMAGE"
 
@@ -165,12 +191,21 @@ NEW_PORT="$(port_for_color "$NEW_COLOR")"
 cleanup_new_container "$NEW_COLOR"
 
 echo "Starting $NEW_CONTAINER on 127.0.0.1:$NEW_PORT"
-docker run -d \
-  --name "$NEW_CONTAINER" \
-  --restart unless-stopped \
-  --env-file "$ENV_FILE" \
-  -p "127.0.0.1:${NEW_PORT}:${CONTAINER_PORT}" \
-  "$IMAGE" >/dev/null
+DOCKER_RUN_ARGS=(
+  docker run -d
+  --name "$NEW_CONTAINER"
+  --restart unless-stopped
+  --env-file "$ENV_FILE"
+  -p "127.0.0.1:${NEW_PORT}:${CONTAINER_PORT}"
+)
+
+if [[ -n "$DOCKER_NETWORK" ]]; then
+  echo "Attaching $NEW_CONTAINER to Docker network: $DOCKER_NETWORK"
+  DOCKER_RUN_ARGS+=(--network "$DOCKER_NETWORK")
+fi
+
+DOCKER_RUN_ARGS+=("$IMAGE")
+"${DOCKER_RUN_ARGS[@]}" >/dev/null
 
 if ! wait_for_healthy "$NEW_COLOR"; then
   echo "New container failed health check. Keeping old color: ${OLD_COLOR:-none}."
