@@ -231,6 +231,29 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<AdminTeacherResponse> getAdminTeachers(String keyword, Integer page, Integer size) {
+        Pageable pageable = PaginationUtils.createPageable(page, size, Sort.by("id").descending());
+        Page<User> teachers = userRepository.searchByRoleAndTeacherKeyword(
+                RoleName.TEACHER, normalizeKeyword(keyword), pageable);
+        List<AdminTeacherResponse> content = teachers.getContent().stream()
+                .map(this::toAdminTeacherResponse)
+                .toList();
+        return new PageResponse<>(
+                content,
+                teachers.getTotalElements(),
+                teachers.getTotalPages(),
+                teachers.getNumber(),
+                teachers.getSize());
+    }
+
+    @Transactional(readOnly = true)
+    public AdminTeacherResponse getAdminTeacher(Long id) {
+        User teacher = userRepository.findByIdAndRoleName(id, RoleName.TEACHER)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher not found with id " + id));
+        return toAdminTeacherResponse(teacher);
+    }
+
+    @Transactional(readOnly = true)
     public AdminStudentResponse getAdminStudent(Long id) {
         return toAdminStudentResponse(getStudentUser(id));
     }
@@ -260,6 +283,21 @@ public class UserService {
                 profile != null ? profile.getFirstName() : null,
                 profile != null ? profile.getLastName() : null,
                 profile != null ? profile.getPhoneNumber() : null,
+                user.isEnabled(),
+                access != null && access.getStatus() != null ? access.getStatus().name() : null);
+    }
+
+    private AdminTeacherResponse toAdminTeacherResponse(User user) {
+        TeacherProfile profile = user.getTeacherProfile();
+        AccountAccess access = user.getAccountAccess();
+        return new AdminTeacherResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                profile != null ? profile.getFirstName() : null,
+                profile != null ? profile.getLastName() : null,
+                profile != null ? profile.getPhoneNumber() : null,
+                profile != null ? profile.getBio() : null,
                 user.isEnabled(),
                 access != null && access.getStatus() != null ? access.getStatus().name() : null);
     }

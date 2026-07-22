@@ -71,6 +71,19 @@ public class AdminUserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(profileMapper.toTeacherResponse(profile));
     }
 
+    @GetMapping("/teachers")
+    public ResponseEntity<PageResponse<AdminTeacherResponse>> getTeachers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ResponseEntity.ok(userService.getAdminTeachers(keyword, page, size));
+    }
+
+    @GetMapping("/teachers/{id}")
+    public ResponseEntity<AdminTeacherResponse> getTeacher(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getAdminTeacher(id));
+    }
+
     @PostMapping("/evaluators")
     public ResponseEntity<EvaluatorProfileResponse> createEvaluator(@RequestBody @Valid CreateEvaluatorRequest request) {
         EvaluatorProfile profile = userService.createEvaluator(request);

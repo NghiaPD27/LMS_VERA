@@ -76,6 +76,68 @@ class AdminFrontendSupportE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testAdminCanSearchAndPageTeachers() throws Exception {
+        Long teacherId = seedTeacher("teacher_assign_anna", "assign.anna@vera.lms", "Anna");
+        seedTeacher("teacher_assign_binh", "assign.binh@vera.lms", "Binh");
+        seedStudent("student_not_teacher", "not.teacher@vera.lms", "Not", "Teacher", "ACTIVE");
+
+        mockMvc.perform(get("/api/admin/teachers")
+                        .param("keyword", "anna")
+                        .param("page", "0")
+                        .param("size", "20")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(teacherId))
+                .andExpect(jsonPath("$.content[0].username").value("teacher_assign_anna"))
+                .andExpect(jsonPath("$.content[0].email").value("assign.anna@vera.lms"))
+                .andExpect(jsonPath("$.content[0].firstName").value("Anna"))
+                .andExpect(jsonPath("$.content[0].lastName").value("Teacher"))
+                .andExpect(jsonPath("$.content[0].phoneNumber").value("0900000001"))
+                .andExpect(jsonPath("$.content[0].bio").value("Bio"))
+                .andExpect(jsonPath("$.content[0].enabled").value(true))
+                .andExpect(jsonPath("$.content[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20));
+
+        mockMvc.perform(get("/api/admin/teachers")
+                        .param("page", "0")
+                        .param("size", "1")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.size").value(1));
+    }
+
+    @Test
+    void testAdminCanViewTeacherDetail() throws Exception {
+        Long teacherId = seedTeacher("teacher_detail_admin", "teacher.detail.admin@vera.lms", "Detail");
+        Long studentId = seedStudent("student_not_teacher_detail", "student.not.teacher.detail@vera.lms", "Not", "Teacher", "ACTIVE");
+
+        mockMvc.perform(get("/api/admin/teachers/" + teacherId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(teacherId))
+                .andExpect(jsonPath("$.username").value("teacher_detail_admin"))
+                .andExpect(jsonPath("$.email").value("teacher.detail.admin@vera.lms"))
+                .andExpect(jsonPath("$.firstName").value("Detail"))
+                .andExpect(jsonPath("$.lastName").value("Teacher"))
+                .andExpect(jsonPath("$.phoneNumber").value("0900000001"))
+                .andExpect(jsonPath("$.bio").value("Bio"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        mockMvc.perform(get("/api/admin/teachers/" + studentId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isNotFound());
+    }
+
+
+    @Test
     void testAdminCanViewStudentDetailAndStudentEnrollments() throws Exception {
         Long studentId = seedStudent("student_detail", "detail@vera.lms", "Detail", "Student", "ACTIVE");
         Long teacherId = seedTeacher("teacher_detail", "teacher.detail@vera.lms", "Teacher");
@@ -191,6 +253,14 @@ class AdminFrontendSupportE2ETest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/admin/enrollments")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/teachers")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/teachers/1")
                         .header("Authorization", "Bearer student-token"))
                 .andExpect(status().isForbidden());
     }

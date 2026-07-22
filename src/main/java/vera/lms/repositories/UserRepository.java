@@ -35,4 +35,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("roleName") RoleName roleName,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    @Query("""
+            SELECT u FROM User u
+            JOIN u.role r
+            LEFT JOIN u.teacherProfile tp
+            WHERE r.name = :roleName
+            AND (
+                :keyword IS NULL OR :keyword = ''
+                OR LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(tp.firstName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(tp.lastName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            )
+            """)
+    Page<User> searchByRoleAndTeacherKeyword(
+            @Param("roleName") RoleName roleName,
+            @Param("keyword") String keyword,
+            Pageable pageable);
 }
