@@ -15,6 +15,8 @@ public interface CheckpointResultRepository extends JpaRepository<CheckpointResu
 
     boolean existsByParticipantId(Long participantId);
 
+    long countByParticipantSessionId(Long sessionId);
+
     Optional<CheckpointResult> findByParticipantId(Long participantId);
 
     @EntityGraph(attributePaths = {"participant"})

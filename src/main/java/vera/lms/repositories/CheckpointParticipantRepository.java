@@ -31,17 +31,42 @@ public interface CheckpointParticipantRepository extends JpaRepository<Checkpoin
 
     boolean existsBySessionIdAndEnrollmentId(Long sessionId, Long enrollmentId);
 
+    long countBySessionId(Long sessionId);
+
     @Query("""
             SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END
             FROM CheckpointParticipant p
             WHERE p.enrollment.id = :enrollmentId
             AND p.session.checkpoint.id = :checkpointId
+            AND p.session.status = vera.lms.enums.CheckpointSessionStatus.PENDING
             AND NOT EXISTS (
                 SELECT r.id FROM CheckpointResult r
                 WHERE r.participant.id = p.id
             )
             """)
     boolean existsPendingForEnrollmentAndCheckpoint(
+            @Param("enrollmentId") Long enrollmentId,
+            @Param("checkpointId") Long checkpointId);
+
+    @EntityGraph(attributePaths = {
+            "session",
+            "session.checkpoint",
+            "session.checkpoint.program",
+            "session.evaluator",
+            "student",
+            "student.studentProfile",
+            "enrollment",
+            "enrollment.program"
+    })
+    @Query("""
+            SELECT p FROM CheckpointParticipant p
+            WHERE p.student.id = :studentId
+            AND p.enrollment.id = :enrollmentId
+            AND p.session.checkpoint.id = :checkpointId
+            ORDER BY p.addedAt DESC
+            """)
+    List<CheckpointParticipant> findStudentCheckpointParticipants(
+            @Param("studentId") Long studentId,
             @Param("enrollmentId") Long enrollmentId,
             @Param("checkpointId") Long checkpointId);
 }

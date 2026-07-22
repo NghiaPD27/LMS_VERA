@@ -141,6 +141,17 @@ public class UserDto {
         String phoneNumber
     ) {}
 
+    public record AdminEvaluatorResponse(
+        Long id,
+        String username,
+        String email,
+        String firstName,
+        String lastName,
+        String phoneNumber,
+        boolean enabled,
+        String status
+    ) {}
+
     public record UpdateUserRequest(
         @Email(message = "Email must be valid")
         @Size(min = 1, max = 100, message = "Email must be between 1 and 100 characters")

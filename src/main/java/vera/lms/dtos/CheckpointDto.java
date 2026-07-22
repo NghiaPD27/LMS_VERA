@@ -61,6 +61,20 @@ public class CheckpointDto {
             String comment
     ) {}
 
+    public record UpdateCheckpointSessionRequest(
+            Long evaluatorId,
+
+            Instant scheduledAt,
+
+            @Size(max = 500, message = "Meet link must not exceed 500 characters")
+            String meetLink
+    ) {}
+
+    public record UpdateCheckpointSessionStatusRequest(
+            @NotBlank(message = "Status is required")
+            String status
+    ) {}
+
     public record CheckpointSessionResponse(
             Long id,
             Long checkpointId,
@@ -74,7 +88,9 @@ public class CheckpointDto {
             String evaluatorName,
             Instant scheduledAt,
             String meetLink,
+            String status,
             Instant createdAt,
+            Instant updatedAt,
             List<CheckpointParticipantResponse> participants
     ) {}
 
@@ -94,5 +110,26 @@ public class CheckpointDto {
             String result,
             String comment,
             Instant evaluatedAt
+    ) {}
+
+    public record StudentCheckpointStatusResponse(
+            Long lessonId,
+            String lessonProgressStatus,
+            Long checkpointId,
+            Long sessionId,
+            Long participantId,
+            Long programId,
+            String programName,
+            Integer blockNumber,
+            Integer gateLessonNumber,
+            Integer nextLessonNumber,
+            String sessionStatus,
+            Instant scheduledAt,
+            String meetLink,
+            Long evaluatorId,
+            String evaluatorName,
+            String lastResult,
+            String lastComment,
+            Instant lastEvaluatedAt
     ) {}
 }

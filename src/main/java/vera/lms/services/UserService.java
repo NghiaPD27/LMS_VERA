@@ -247,6 +247,22 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<AdminEvaluatorResponse> getAdminEvaluators(String keyword, Integer page, Integer size) {
+        Pageable pageable = PaginationUtils.createPageable(page, size, Sort.by("id").descending());
+        Page<User> evaluators = userRepository.searchByRoleAndEvaluatorKeyword(
+                RoleName.EVALUATOR, normalizeKeyword(keyword), pageable);
+        List<AdminEvaluatorResponse> content = evaluators.getContent().stream()
+                .map(this::toAdminEvaluatorResponse)
+                .toList();
+        return new PageResponse<>(
+                content,
+                evaluators.getTotalElements(),
+                evaluators.getTotalPages(),
+                evaluators.getNumber(),
+                evaluators.getSize());
+    }
+
+    @Transactional(readOnly = true)
     public AdminTeacherResponse getAdminTeacher(Long id) {
         User teacher = userRepository.findByIdAndRoleName(id, RoleName.TEACHER)
                 .orElseThrow(() -> new ResourceNotFoundException("Teacher not found with id " + id));
@@ -298,6 +314,20 @@ public class UserService {
                 profile != null ? profile.getLastName() : null,
                 profile != null ? profile.getPhoneNumber() : null,
                 profile != null ? profile.getBio() : null,
+                user.isEnabled(),
+                access != null && access.getStatus() != null ? access.getStatus().name() : null);
+    }
+
+    private AdminEvaluatorResponse toAdminEvaluatorResponse(User user) {
+        EvaluatorProfile profile = user.getEvaluatorProfile();
+        AccountAccess access = user.getAccountAccess();
+        return new AdminEvaluatorResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                profile != null ? profile.getFirstName() : null,
+                profile != null ? profile.getLastName() : null,
+                profile != null ? profile.getPhoneNumber() : null,
                 user.isEnabled(),
                 access != null && access.getStatus() != null ? access.getStatus().name() : null);
     }

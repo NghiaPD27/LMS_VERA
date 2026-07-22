@@ -28,6 +28,13 @@ public class CheckpointEvaluatorController {
         return ResponseEntity.ok(checkpointService.getEvaluatorSessions(evaluator));
     }
 
+    @GetMapping("/checkpoint-sessions/{id}")
+    public ResponseEntity<CheckpointSessionResponse> getCheckpointSession(
+            @AuthenticationPrincipal User evaluator,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(checkpointService.getEvaluatorSession(evaluator, id));
+    }
+
     @PostMapping("/checkpoint-results")
     public ResponseEntity<CheckpointResultResponse> submitCheckpointResult(
             @AuthenticationPrincipal User evaluator,

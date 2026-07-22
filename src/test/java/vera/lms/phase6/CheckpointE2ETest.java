@@ -9,6 +9,8 @@ import java.time.temporal.ChronoUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -177,6 +179,83 @@ class CheckpointE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testAdminCanSearchEvaluatorsForCheckpointAssignment() throws Exception {
+        Long evaluatorId = seedEvaluator("eval_user");
+        seedEvaluator("other_eval");
+
+        mockMvc.perform(get("/api/admin/evaluators")
+                        .header("Authorization", "Bearer admin-token")
+                        .param("keyword", "eval_user")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(evaluatorId))
+                .andExpect(jsonPath("$.content[0].username").value("eval_user"))
+                .andExpect(jsonPath("$.content[0].email").value("eval_user@eval.test"))
+                .andExpect(jsonPath("$.content[0].firstName").value("Evaluator"))
+                .andExpect(jsonPath("$.content[0].enabled").value(true))
+                .andExpect(jsonPath("$.content[0].status").value("ACTIVE"));
+    }
+
+    @Test
+    void testAdminCanListDetailUpdateRemoveAndCancelCheckpointSessionBeforeResults() throws Exception {
+        Fixture fixture = seedCheckpointReadyStudent("Admin Manage");
+        Long otherEvaluatorId = seedEvaluator("other_eval");
+        createCheckpointSession(fixture);
+        Long sessionId = sessionId(fixture.enrollmentId());
+        Long participantId = participantId(fixture.enrollmentId());
+
+        mockMvc.perform(get("/api/admin/checkpoint-sessions")
+                        .header("Authorization", "Bearer admin-token")
+                        .param("programId", fixture.programId().toString())
+                        .param("blockNumber", "1")
+                        .param("status", "PENDING")
+                        .param("weekStart", "2030-01-14T00:00:00Z")
+                        .param("weekEnd", "2030-01-16T00:00:00Z")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(sessionId))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.content[0].participants[0].id").value(participantId));
+
+        mockMvc.perform(get("/api/admin/checkpoint-sessions/" + sessionId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId))
+                .andExpect(jsonPath("$.meetLink").value("https://meet.google.com/checkpoint"));
+
+        mockMvc.perform(patch("/api/admin/checkpoint-sessions/" + sessionId)
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "evaluatorId": %d,
+                                  "scheduledAt": "2030-01-15T15:00:00Z",
+                                  "meetLink": "https://meet.google.com/updated"
+                                }
+                                """.formatted(otherEvaluatorId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.evaluatorId").value(otherEvaluatorId))
+                .andExpect(jsonPath("$.scheduledAt").value("2030-01-15T15:00:00Z"))
+                .andExpect(jsonPath("$.meetLink").value("https://meet.google.com/updated"));
+
+        mockMvc.perform(delete("/api/admin/checkpoint-sessions/" + sessionId + "/participants/" + participantId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.participants.length()").value(0));
+
+        mockMvc.perform(patch("/api/admin/checkpoint-sessions/" + sessionId + "/status")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
     void testStudentBeforeTeacherApprovesGateLessonIsNotCheckpointEligible() throws Exception {
         Long studentId = seedStudent("student_user");
         Long programId = seedProgram("Checkpoint Program Not Ready");
@@ -196,6 +275,7 @@ class CheckpointE2ETest extends BaseIntegrationTest {
     void testCheckpointPassCompletesGateLessonUnlocksNextBlockAndHidesEligibility() throws Exception {
         Fixture fixture = seedCheckpointReadyStudent("Pass");
         createCheckpointSession(fixture);
+        Long sessionId = sessionId(fixture.enrollmentId());
         Long participantId = participantId(fixture.enrollmentId());
 
         mockMvc.perform(post("/api/evaluator/checkpoint-results")
@@ -214,6 +294,11 @@ class CheckpointE2ETest extends BaseIntegrationTest {
 
         assertEquals("COMPLETED", lessonProgressStatus(fixture.studentId(), fixture.lesson5()));
         assertEquals("VIDEO_IN_PROGRESS", lessonProgressStatus(fixture.studentId(), fixture.lesson6()));
+
+        mockMvc.perform(get("/api/admin/checkpoint-sessions/" + sessionId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
 
         mockMvc.perform(get("/api/admin/checkpoint-eligible-students")
                         .header("Authorization", "Bearer admin-token")
@@ -251,6 +336,70 @@ class CheckpointE2ETest extends BaseIntegrationTest {
                         .param("blockNumber", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void testStudentCanViewCheckpointStatusAndEvaluatorCanOpenSessionDetail() throws Exception {
+        Fixture fixture = seedCheckpointReadyStudent("Status");
+        createCheckpointSession(fixture);
+        Long sessionId = sessionId(fixture.enrollmentId());
+        Long participantId = participantId(fixture.enrollmentId());
+
+        mockMvc.perform(get("/api/student/checkpoint-status")
+                        .header("Authorization", "Bearer student-token")
+                        .param("lessonId", fixture.lesson5().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lessonId").value(fixture.lesson5()))
+                .andExpect(jsonPath("$.lessonProgressStatus").value("WAITING_FOR_CHECKPOINT"))
+                .andExpect(jsonPath("$.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.participantId").value(participantId))
+                .andExpect(jsonPath("$.scheduledAt").value("2030-01-15T13:00:00Z"))
+                .andExpect(jsonPath("$.meetLink").value("https://meet.google.com/checkpoint"))
+                .andExpect(jsonPath("$.evaluatorName").value("Evaluator eval_user"));
+
+        mockMvc.perform(get("/api/evaluator/checkpoint-sessions/" + sessionId)
+                        .header("Authorization", "Bearer evaluator-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId))
+                .andExpect(jsonPath("$.participants[0].id").value(participantId));
+    }
+
+    @Test
+    void testAdminCannotEditRemoveOrCancelSessionAfterResult() throws Exception {
+        Fixture fixture = seedCheckpointReadyStudent("Immutable Result");
+        createCheckpointSession(fixture);
+        Long sessionId = sessionId(fixture.enrollmentId());
+        Long participantId = participantId(fixture.enrollmentId());
+
+        mockMvc.perform(post("/api/evaluator/checkpoint-results")
+                        .header("Authorization", "Bearer evaluator-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "participantId": %d,
+                                  "result": "NOT_PASS"
+                                }
+                                """.formatted(participantId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/admin/checkpoint-sessions/" + sessionId)
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"meetLink\":\"https://meet.google.com/cannot-edit\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Only pending checkpoint sessions can be edited"));
+
+        mockMvc.perform(delete("/api/admin/checkpoint-sessions/" + sessionId + "/participants/" + participantId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Checkpoint participant with a result cannot be removed"));
+
+        mockMvc.perform(patch("/api/admin/checkpoint-sessions/" + sessionId + "/status")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Checkpoint session with results cannot be cancelled"));
     }
 
     @Test
@@ -308,6 +457,13 @@ class CheckpointE2ETest extends BaseIntegrationTest {
                 "SELECT id FROM checkpoint_participants WHERE enrollment_id = ?",
                 Long.class,
                 enrollmentId);
+    }
+
+    private Long sessionId(Long enrollmentId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT session_id FROM checkpoint_participants
+                WHERE enrollment_id = ?
+                """, Long.class, enrollmentId);
     }
 
     private String lessonProgressStatus(Long studentId, Long lessonId) {

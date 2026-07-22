@@ -90,6 +90,14 @@ public class AdminUserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(profileMapper.toEvaluatorResponse(profile));
     }
 
+    @GetMapping("/evaluators")
+    public ResponseEntity<PageResponse<AdminEvaluatorResponse>> getEvaluators(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ResponseEntity.ok(userService.getAdminEvaluators(keyword, page, size));
+    }
+
     @PatchMapping("/users/{id}")
     public ResponseEntity<UserResponse> updateUser(
             @PathVariable Long id,

@@ -2,6 +2,7 @@ package vera.lms.models;
 
 import jakarta.persistence.*;
 import lombok.*;
+import vera.lms.enums.CheckpointSessionStatus;
 
 import java.time.Instant;
 
@@ -32,13 +33,30 @@ public class CheckpointSession {
     @Column(name = "meet_link", nullable = false, length = 500)
     private String meetLink;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(name = "status", nullable = false, length = 20)
+    private CheckpointSessionStatus status = CheckpointSessionStatus.PENDING;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     @PrePersist
     protected void onCreate() {
+        Instant now = Instant.now();
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = now;
         }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

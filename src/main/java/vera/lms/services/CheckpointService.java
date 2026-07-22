@@ -1,8 +1,12 @@
 package vera.lms.services;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.CheckpointDto.*;
+import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.enums.*;
 import vera.lms.exceptions.BadRequestException;
 import vera.lms.exceptions.ConflictException;
@@ -10,6 +14,7 @@ import vera.lms.exceptions.ForbiddenException;
 import vera.lms.exceptions.ResourceNotFoundException;
 import vera.lms.models.*;
 import vera.lms.repositories.*;
+import vera.lms.utils.PaginationUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -144,11 +149,158 @@ public class CheckpointService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<CheckpointSessionResponse> getAdminSessions(
+            Long programId,
+            Integer blockNumber,
+            String status,
+            Instant weekStart,
+            Instant weekEnd,
+            Integer page,
+            Integer size) {
+        validateOptionalBlockNumber(blockNumber);
+        validateWeekRange(weekStart, weekEnd);
+        CheckpointSessionStatus sessionStatus = parseOptionalSessionStatus(status);
+        Pageable pageable = PaginationUtils.createPageable(page, size, Sort.by("scheduledAt").descending());
+        Page<CheckpointSession> sessions = sessionRepository.searchAdminSessions(
+                programId, blockNumber, sessionStatus, weekStart, weekEnd, pageable);
+        List<CheckpointSessionResponse> content = sessions.getContent().stream()
+                .map(this::toSessionResponse)
+                .toList();
+        return new PageResponse<>(
+                content,
+                sessions.getTotalElements(),
+                sessions.getTotalPages(),
+                sessions.getNumber(),
+                sessions.getSize());
+    }
+
+    @Transactional(readOnly = true)
+    public CheckpointSessionResponse getAdminSession(Long sessionId) {
+        CheckpointSession session = sessionRepository.findWithCheckpointById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint session not found with id " + sessionId));
+        return toSessionResponse(session);
+    }
+
+    public CheckpointSessionResponse updateSession(Long sessionId, UpdateCheckpointSessionRequest request) {
+        CheckpointSession session = sessionRepository.findWithCheckpointById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint session not found with id " + sessionId));
+        ensureSessionEditable(session);
+        if (request.evaluatorId() != null) {
+            session.setEvaluator(getEvaluatorUser(request.evaluatorId()));
+        }
+        if (request.scheduledAt() != null) {
+            session.setScheduledAt(request.scheduledAt());
+        }
+        if (request.meetLink() != null) {
+            session.setMeetLink(normalizeMeetLink(request.meetLink()));
+        }
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    public CheckpointSessionResponse updateSessionStatus(Long sessionId, UpdateCheckpointSessionStatusRequest request) {
+        CheckpointSession session = sessionRepository.findWithCheckpointById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint session not found with id " + sessionId));
+        CheckpointSessionStatus status = parseSessionStatus(request.status());
+        if (status != CheckpointSessionStatus.CANCELLED) {
+            throw new BadRequestException("Only CANCELLED status can be set manually");
+        }
+        if (hasAnyResult(session.getId())) {
+            throw new ConflictException("Checkpoint session with results cannot be cancelled");
+        }
+        session.setStatus(CheckpointSessionStatus.CANCELLED);
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    public CheckpointSessionResponse removeParticipant(Long sessionId, Long participantId) {
+        CheckpointSession session = sessionRepository.findWithCheckpointById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint session not found with id " + sessionId));
+        CheckpointParticipant participant = participantRepository.findWithDetailsById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint participant not found with id " + participantId));
+        if (!participant.getSession().getId().equals(sessionId)) {
+            throw new BadRequestException("Checkpoint participant does not belong to this session");
+        }
+        if (resultRepository.existsByParticipantId(participantId)) {
+            throw new ConflictException("Checkpoint participant with a result cannot be removed");
+        }
+        if (session.getStatus() == CheckpointSessionStatus.CANCELLED) {
+            throw new ConflictException("Cancelled checkpoint sessions cannot be edited");
+        }
+        participantRepository.delete(participant);
+        session.setStatus(CheckpointSessionStatus.PENDING);
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    @Transactional(readOnly = true)
     public List<CheckpointSessionResponse> getEvaluatorSessions(User evaluator) {
         ensureEvaluator(evaluator);
         return sessionRepository.findByEvaluatorIdOrderByScheduledAtDesc(evaluator.getId()).stream()
                 .map(this::toSessionResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CheckpointSessionResponse getEvaluatorSession(User evaluator, Long sessionId) {
+        ensureEvaluator(evaluator);
+        CheckpointSession session = sessionRepository.findWithCheckpointById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkpoint session not found with id " + sessionId));
+        if (!session.getEvaluator().getId().equals(evaluator.getId())) {
+            throw new ForbiddenException("Checkpoint session does not belong to current evaluator");
+        }
+        return toSessionResponse(session);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentCheckpointStatusResponse getStudentCheckpointStatus(User student, Long lessonId) {
+        if (student == null || student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
+            throw new ForbiddenException("Only students can view checkpoint status");
+        }
+        Lesson lesson = lessonRepository.findByIdAndStatusNot(lessonId, LessonStatus.ARCHIVED)
+                .orElseThrow(() -> new ResourceNotFoundException("Lesson not found with id " + lessonId));
+        Enrollment enrollment = enrollmentRepository
+                .findAccessibleEnrollment(student.getId(), lesson.getProgram().getId(), EnrollmentStatus.ACTIVE, Instant.now())
+                .orElseThrow(() -> new ForbiddenException("Course enrollment is expired or unavailable"));
+        StudentLessonProgress progress = progressRepository
+                .findByStudentIdAndLessonId(student.getId(), lessonId)
+                .orElseThrow(() -> new ForbiddenException("Lesson is locked"));
+        if (progress.getStatus() == LessonProgressStatus.LOCKED) {
+            throw new ForbiddenException("Lesson is locked");
+        }
+
+        int blockNumber = lesson.getLessonNumber() / CHECKPOINT_INTERVAL;
+        Checkpoint checkpoint = isCheckpointGate(lesson)
+                ? checkpointRepository.findByProgramIdAndBlockNumber(lesson.getProgram().getId(), blockNumber).orElse(null)
+                : null;
+        CheckpointParticipant participant = null;
+        CheckpointResult result = null;
+        if (checkpoint != null) {
+            List<CheckpointParticipant> participants = participantRepository.findStudentCheckpointParticipants(
+                    student.getId(), enrollment.getId(), checkpoint.getId());
+            if (!participants.isEmpty()) {
+                participant = participants.get(0);
+                result = resultRepository.findByParticipantId(participant.getId()).orElse(null);
+            }
+        }
+
+        CheckpointSession session = participant != null ? participant.getSession() : null;
+        return new StudentCheckpointStatusResponse(
+                lessonId,
+                progress.getStatus().name(),
+                checkpoint != null ? checkpoint.getId() : null,
+                session != null ? session.getId() : null,
+                participant != null ? participant.getId() : null,
+                lesson.getProgram().getId(),
+                lesson.getProgram().getName(),
+                isCheckpointGate(lesson) ? blockNumber : null,
+                isCheckpointGate(lesson) ? lesson.getLessonNumber() : null,
+                isCheckpointGate(lesson) ? lesson.getLessonNumber() + 1 : null,
+                session != null ? session.getStatus().name() : null,
+                session != null ? session.getScheduledAt() : null,
+                session != null ? session.getMeetLink() : null,
+                session != null ? session.getEvaluator().getId() : null,
+                session != null ? displayName(session.getEvaluator()) : null,
+                result != null ? result.getResult().name() : null,
+                result != null ? result.getComment() : null,
+                result != null ? result.getEvaluatedAt() : null);
     }
 
     public CheckpointResultResponse submitResult(User evaluator, SubmitCheckpointResultRequest request) {
@@ -157,6 +309,9 @@ public class CheckpointService {
                 .orElseThrow(() -> new ResourceNotFoundException("Checkpoint participant not found with id " + request.participantId()));
         if (!participant.getSession().getEvaluator().getId().equals(evaluator.getId())) {
             throw new ForbiddenException("Checkpoint session does not belong to current evaluator");
+        }
+        if (participant.getSession().getStatus() == CheckpointSessionStatus.CANCELLED) {
+            throw new ConflictException("Cancelled checkpoint sessions cannot be reviewed");
         }
         if (resultRepository.existsByParticipantId(participant.getId())) {
             throw new ConflictException("Checkpoint participant already has a result");
@@ -171,10 +326,14 @@ public class CheckpointService {
                 .build();
         result = resultRepository.save(result);
         applyResultToProgress(participant, assessmentResult);
+        updateSessionCompletion(participant.getSession());
         return toResultResponse(result);
     }
 
     private void addParticipantsToSession(CheckpointSession session, List<Long> enrollmentIds) {
+        if (session.getStatus() != CheckpointSessionStatus.PENDING) {
+            throw new ConflictException("Only pending checkpoint sessions can be edited");
+        }
         for (Long enrollmentId : enrollmentIds) {
             Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
                     .orElseThrow(() -> new ResourceNotFoundException("Enrollment not found with id " + enrollmentId));
@@ -310,7 +469,9 @@ public class CheckpointService {
                 displayName(session.getEvaluator()),
                 session.getScheduledAt(),
                 session.getMeetLink(),
+                session.getStatus().name(),
                 session.getCreatedAt(),
+                session.getUpdatedAt(),
                 participants);
     }
 
@@ -354,6 +515,43 @@ public class CheckpointService {
             return AssessmentResult.valueOf(result.trim().toUpperCase());
         } catch (Exception e) {
             throw new BadRequestException("Invalid checkpoint result: " + result);
+        }
+    }
+
+    private CheckpointSessionStatus parseOptionalSessionStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+        return parseSessionStatus(status);
+    }
+
+    private CheckpointSessionStatus parseSessionStatus(String status) {
+        try {
+            return CheckpointSessionStatus.valueOf(status.trim().toUpperCase());
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid checkpoint session status: " + status);
+        }
+    }
+
+    private void ensureSessionEditable(CheckpointSession session) {
+        if (session.getStatus() != CheckpointSessionStatus.PENDING) {
+            throw new ConflictException("Only pending checkpoint sessions can be edited");
+        }
+        if (hasAnyResult(session.getId())) {
+            throw new ConflictException("Checkpoint session with results cannot be edited");
+        }
+    }
+
+    private boolean hasAnyResult(Long sessionId) {
+        return resultRepository.countByParticipantSessionId(sessionId) > 0;
+    }
+
+    private void updateSessionCompletion(CheckpointSession session) {
+        long participants = participantRepository.countBySessionId(session.getId());
+        long results = resultRepository.countByParticipantSessionId(session.getId());
+        if (participants > 0 && participants == results) {
+            session.setStatus(CheckpointSessionStatus.COMPLETED);
+            sessionRepository.save(session);
         }
     }
 
@@ -414,5 +612,11 @@ public class CheckpointService {
 
     private int nextLessonNumber(int blockNumber) {
         return gateLessonNumber(blockNumber) + 1;
+    }
+
+    private boolean isCheckpointGate(Lesson lesson) {
+        return lesson.getLessonNumber() > 0
+                && lesson.getLessonNumber() % CHECKPOINT_INTERVAL == 0
+                && lesson.getLessonNumber() <= CHECKPOINT_INTERVAL * MAX_BLOCK_NUMBER;
     }
 }
