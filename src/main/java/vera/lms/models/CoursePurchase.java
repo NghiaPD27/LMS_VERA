@@ -71,6 +71,9 @@ public class CoursePurchase {
     @Column(name = "paid_at")
     private Instant paidAt;
 
+    @Column(name = "admin_note", columnDefinition = "TEXT")
+    private String adminNote;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {

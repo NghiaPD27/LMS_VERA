@@ -91,6 +91,9 @@ public class CheckpointDto {
             String status,
             Instant createdAt,
             Instant updatedAt,
+            Integer participantCount,
+            Integer resultSubmittedCount,
+            Boolean canManage,
             List<CheckpointParticipantResponse> participants
     ) {}
 

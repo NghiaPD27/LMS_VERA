@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.EnrollmentDto.EnrollStudentRequest;
+import vera.lms.dtos.EnrollmentDto;
 import vera.lms.dtos.EnrollmentDto.AdminEnrollmentResponse;
 import vera.lms.dtos.EnrollmentDto.ExtendEnrollmentRequest;
 import vera.lms.dtos.EnrollmentDto.UpdateEnrollmentRequest;
@@ -37,6 +38,7 @@ public class EnrollmentService {
     private final ProgramRepository programRepository;
     private final LessonRepository lessonRepository;
     private final StudentLessonProgressRepository progressRepository;
+    private final StudentTeacherAssignmentRepository assignmentRepository;
 
     @Autowired
     public EnrollmentService(
@@ -44,12 +46,14 @@ public class EnrollmentService {
             UserRepository userRepository,
             ProgramRepository programRepository,
             LessonRepository lessonRepository,
-            StudentLessonProgressRepository progressRepository) {
+            StudentLessonProgressRepository progressRepository,
+            StudentTeacherAssignmentRepository assignmentRepository) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.programRepository = programRepository;
         this.lessonRepository = lessonRepository;
         this.progressRepository = progressRepository;
+        this.assignmentRepository = assignmentRepository;
     }
 
     public Enrollment enrollStudent(EnrollStudentRequest request) {
@@ -117,8 +121,10 @@ public class EnrollmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<Enrollment> getStudentEnrollments(User student) {
-        return enrollmentRepository.findByStudentId(student.getId());
+    public List<EnrollmentDto.EnrollmentResponse> getStudentEnrollmentResponses(User student) {
+        return enrollmentRepository.findByStudentId(student.getId()).stream()
+                .map(this::toStudentEnrollmentResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -164,6 +170,8 @@ public class EnrollmentService {
                 ? (profile.getFirstName() + " " + profile.getLastName()).trim()
                 : student.getUsername();
         Program program = enrollment.getProgram();
+        StudentTeacherAssignment assignment = assignmentRepository.findByEnrollmentId(enrollment.getId()).orElse(null);
+        User teacher = assignment != null ? assignment.getTeacher() : null;
         return new AdminEnrollmentResponse(
                 enrollment.getId(),
                 student.getId(),
@@ -173,7 +181,60 @@ public class EnrollmentService {
                 program.getName(),
                 enrollment.getStatus().name(),
                 enrollment.getEnrolledAt(),
-                enrollment.getExpiredAt());
+                enrollment.getExpiredAt(),
+                teacher != null ? teacher.getId() : null,
+                teacher != null ? displayName(teacher) : null,
+                assignment != null ? assignment.getAssignedAt() : null);
+    }
+
+    private EnrollmentDto.EnrollmentResponse toStudentEnrollmentResponse(Enrollment enrollment) {
+        List<StudentLessonProgress> progresses = progressRepository.findByStudentId(enrollment.getStudent().getId()).stream()
+                .filter(progress -> progress.getLesson().getProgram().getId().equals(enrollment.getProgram().getId()))
+                .toList();
+        long total = progresses.size();
+        long completed = progresses.stream()
+                .filter(progress -> progress.getStatus() == LessonProgressStatus.COMPLETED)
+                .count();
+        StudentLessonProgress current = progresses.stream()
+                .filter(progress -> progress.getStatus() != LessonProgressStatus.COMPLETED
+                        && progress.getStatus() != LessonProgressStatus.LOCKED)
+                .min((a, b) -> Integer.compare(a.getLesson().getLessonNumber(), b.getLesson().getLessonNumber()))
+                .orElseGet(() -> progresses.stream()
+                        .filter(progress -> progress.getStatus() == LessonProgressStatus.LOCKED)
+                        .min((a, b) -> Integer.compare(a.getLesson().getLessonNumber(), b.getLesson().getLessonNumber()))
+                        .orElse(null));
+        int progressPercent = total == 0 ? 0 : (int) Math.floor((completed * 100.0) / total);
+        return new EnrollmentDto.EnrollmentResponse(
+                enrollment.getId(),
+                enrollment.getStudent().getId(),
+                enrollment.getProgram().getId(),
+                enrollment.getProgram().getName(),
+                enrollment.getStatus().name(),
+                enrollment.getEnrolledAt(),
+                enrollment.getExpiredAt(),
+                progressPercent,
+                current != null ? current.getLesson().getLessonNumber() : null,
+                current != null ? current.getLesson().getName() : null,
+                current != null ? current.getStatus().name() : null,
+                current != null ? nextAction(current.getStatus()) : "COMPLETED");
+    }
+
+    private String nextAction(LessonProgressStatus status) {
+        return switch (status) {
+            case VIDEO_IN_PROGRESS -> "WATCH_VIDEO";
+            case QUIZ_AVAILABLE -> "TAKE_QUIZ";
+            case WAITING_FOR_TEACHER -> "BOOK_TEACHER";
+            case WAITING_FOR_CHECKPOINT -> "WAIT_CHECKPOINT";
+            case LOCKED -> "WAIT_UNLOCK";
+            case COMPLETED -> "COMPLETED";
+        };
+    }
+
+    private String displayName(User user) {
+        if (user.getTeacherProfile() != null) {
+            return (user.getTeacherProfile().getFirstName() + " " + user.getTeacherProfile().getLastName()).trim();
+        }
+        return user.getUsername();
     }
 
     private void validateStudentCanEnroll(User student) {

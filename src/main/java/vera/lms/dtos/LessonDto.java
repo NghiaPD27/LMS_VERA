@@ -32,6 +32,11 @@ public class LessonDto {
             String content,
             String status,
             String lessonProgressStatus,
-            Boolean locked
+            Boolean locked,
+            Boolean hasVideo,
+            String videoStatus,
+            Integer videoDurationSeconds,
+            Boolean hasQuiz,
+            Integer questionCount
     ) {}
 }

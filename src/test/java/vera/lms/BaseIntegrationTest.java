@@ -49,6 +49,7 @@ public abstract class BaseIntegrationTest {
         jdbcTemplate.execute("DELETE FROM lesson_videos");
         jdbcTemplate.execute("DELETE FROM student_lesson_progress");
         jdbcTemplate.execute("DELETE FROM sepay_webhook_events");
+        jdbcTemplate.execute("DELETE FROM purchase_events");
         jdbcTemplate.execute("DELETE FROM course_purchases");
         jdbcTemplate.execute("DELETE FROM enrollments");
         jdbcTemplate.execute("DELETE FROM lessons");

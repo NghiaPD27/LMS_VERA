@@ -1,6 +1,8 @@
 package vera.lms.dtos;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,7 +30,25 @@ public class PurchaseDto {
             String paymentContent,
             Long enrollmentId,
             Instant createdAt,
-            Instant paidAt
+            Instant paidAt,
+            String adminNote
+    ) {}
+
+    public record UpdatePurchaseStatusRequest(
+            @NotBlank(message = "Status is required")
+            String status,
+
+            @Size(max = 1000, message = "Note must not exceed 1000 characters")
+            String note
+    ) {}
+
+    public record PurchaseEventResponse(
+            Long id,
+            Long purchaseId,
+            String oldStatus,
+            String newStatus,
+            String note,
+            Instant createdAt
     ) {}
 
     public record SepayWebhookRequest(

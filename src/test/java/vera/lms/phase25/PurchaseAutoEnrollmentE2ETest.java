@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -76,6 +77,40 @@ class PurchaseAutoEnrollmentE2ETest extends BaseIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"programId\":" + programId + "}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testAdminGetsPurchaseDetailUpdatesStatusAndReadsEvents() throws Exception {
+        seedStudent("purchase_cancel_student");
+        Long programId = seedProgram("Cancel Purchase English", "PUBLISHED");
+
+        mockMvc.perform(post("/api/student/purchases")
+                        .header("Authorization", "Bearer mock-student-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"programId\":" + programId + "}"))
+                .andExpect(status().isCreated());
+        Long purchaseId = jdbcTemplate.queryForObject("SELECT id FROM course_purchases", Long.class);
+
+        mockMvc.perform(get("/api/admin/purchases/" + purchaseId)
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(purchaseId))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        mockMvc.perform(patch("/api/admin/purchases/" + purchaseId + "/status")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\",\"note\":\"Wrong transfer content\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.adminNote").value("Wrong transfer content"));
+
+        mockMvc.perform(get("/api/admin/purchases/" + purchaseId + "/events")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].oldStatus").value("PENDING"))
+                .andExpect(jsonPath("$[0].newStatus").value("CANCELLED"))
+                .andExpect(jsonPath("$[0].note").value("Wrong transfer content"));
     }
 
     @Test

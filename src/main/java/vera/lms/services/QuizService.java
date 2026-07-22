@@ -151,6 +151,25 @@ public class QuizService {
         return toAttemptResponse(attempt, lessonProgress);
     }
 
+    public void deleteQuiz(Long lessonId) {
+        Quiz quiz = quizRepository.findByLessonId(lessonId)
+                .orElseThrow(() -> new ResourceNotFoundException("Quiz not found for lesson id " + lessonId));
+        if (quizAttemptRepository.existsByQuizId(quiz.getId())) {
+            throw new ConflictException("Cannot delete quiz because it already has attempts");
+        }
+        quizRepository.delete(quiz);
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuizAttemptResponse> getAdminLessonQuizAttempts(Long lessonId) {
+        if (!lessonRepository.existsById(lessonId)) {
+            throw new ResourceNotFoundException("Lesson not found with id " + lessonId);
+        }
+        return quizAttemptRepository.findByQuizLessonIdOrderByStartedAtDesc(lessonId).stream()
+                .map(this::toAttemptResponseForAdmin)
+                .toList();
+    }
+
     private void validateQuizRequest(UpsertQuizRequest request) {
         Set<String> normalizedQuestions = new HashSet<>();
         int questionPosition = 1;
@@ -300,6 +319,25 @@ public class QuizService {
                 attempt.getScorePercent(),
                 bestScore,
                 lessonProgress.getStatus().name(),
+                attempt.getStartedAt(),
+                attempt.getSubmittedAt());
+    }
+
+    private QuizAttemptResponse toAttemptResponseForAdmin(QuizAttempt attempt) {
+        Integer bestScore = quizAttemptRepository.findBestScorePercent(
+                attempt.getQuiz().getId(), attempt.getStudent().getId());
+        return new QuizAttemptResponse(
+                attempt.getId(),
+                attempt.getQuiz().getId(),
+                attempt.getQuiz().getLesson().getId(),
+                attempt.getStudent().getId(),
+                attempt.getAttemptNumber(),
+                attempt.isSubmitted(),
+                attempt.getCorrectCount(),
+                attempt.getTotalQuestions(),
+                attempt.getScorePercent(),
+                bestScore,
+                null,
                 attempt.getStartedAt(),
                 attempt.getSubmittedAt());
     }

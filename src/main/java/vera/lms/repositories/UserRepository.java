@@ -71,4 +71,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("roleName") RoleName roleName,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    @Query("""
+            SELECT u FROM User u
+            JOIN u.role r
+            LEFT JOIN u.accountAccess aa
+            WHERE (:roleName IS NULL OR r.name = :roleName)
+            AND (:status IS NULL OR aa.status = :status)
+            AND (
+                :keyword IS NULL OR :keyword = ''
+                OR LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            )
+            """)
+    Page<User> searchAdminUsers(
+            @Param("roleName") RoleName roleName,
+            @Param("status") vera.lms.enums.AccountStatus status,
+            @Param("keyword") String keyword,
+            Pageable pageable);
 }

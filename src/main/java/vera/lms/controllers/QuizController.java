@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,6 +15,8 @@ import vera.lms.dtos.QuizDto.SubmitQuizAttemptRequest;
 import vera.lms.dtos.QuizDto.UpsertQuizRequest;
 import vera.lms.models.User;
 import vera.lms.services.QuizService;
+
+import java.util.List;
 
 @RestController
 public class QuizController {
@@ -36,6 +39,17 @@ public class QuizController {
             @PathVariable Long lessonId,
             @AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(quizService.getQuizForLesson(lessonId, currentUser));
+    }
+
+    @DeleteMapping("/api/lessons/{lessonId}/quiz")
+    public ResponseEntity<Void> deleteLessonQuiz(@PathVariable Long lessonId) {
+        quizService.deleteQuiz(lessonId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/api/admin/lessons/{lessonId}/quiz-attempts")
+    public ResponseEntity<List<QuizAttemptResponse>> getLessonQuizAttempts(@PathVariable Long lessonId) {
+        return ResponseEntity.ok(quizService.getAdminLessonQuizAttempts(lessonId));
     }
 
     @PostMapping("/api/quizzes/{quizId}/attempts")

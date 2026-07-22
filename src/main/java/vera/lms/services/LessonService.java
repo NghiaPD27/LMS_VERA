@@ -20,7 +20,9 @@ import vera.lms.models.StudentLessonProgressId;
 import vera.lms.models.User;
 import vera.lms.repositories.EnrollmentRepository;
 import vera.lms.repositories.LessonRepository;
+import vera.lms.repositories.LessonVideoRepository;
 import vera.lms.repositories.ProgramRepository;
+import vera.lms.repositories.QuizRepository;
 import vera.lms.repositories.StudentLessonProgressRepository;
 
 import java.time.Instant;
@@ -37,16 +39,22 @@ public class LessonService {
     private final ProgramRepository programRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final StudentLessonProgressRepository progressRepository;
+    private final LessonVideoRepository lessonVideoRepository;
+    private final QuizRepository quizRepository;
 
     public LessonService(
             LessonRepository lessonRepository,
             ProgramRepository programRepository,
             EnrollmentRepository enrollmentRepository,
-            StudentLessonProgressRepository progressRepository) {
+            StudentLessonProgressRepository progressRepository,
+            LessonVideoRepository lessonVideoRepository,
+            QuizRepository quizRepository) {
         this.lessonRepository = lessonRepository;
         this.programRepository = programRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.progressRepository = progressRepository;
+        this.lessonVideoRepository = lessonVideoRepository;
+        this.quizRepository = quizRepository;
     }
 
     public Lesson createLesson(Long programId, CreateLessonRequest request) {
@@ -103,9 +111,11 @@ public class LessonService {
     }
 
     @Transactional(readOnly = true)
-    public List<Lesson> getLessonsForProgram(Long programId) {
+    public List<LessonResponse> getLessonsForProgram(Long programId) {
         ensureProgramExists(programId);
-        return lessonRepository.findByProgramIdAndStatusNotOrderByLessonNumberAsc(programId, LessonStatus.ARCHIVED);
+        return lessonRepository.findByProgramIdAndStatusNotOrderByLessonNumberAsc(programId, LessonStatus.ARCHIVED).stream()
+                .map(lesson -> toLessonResponse(lesson, null))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +142,11 @@ public class LessonService {
     public Lesson getLesson(Long id) {
         return lessonRepository.findByIdAndStatusNot(id, LessonStatus.ARCHIVED)
                 .orElseThrow(() -> new ResourceNotFoundException("Lesson not found with id " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public LessonResponse getLessonResponse(Long id) {
+        return toLessonResponse(getLesson(id), null);
     }
 
     private Lesson getEditableLesson(Long id) {
@@ -168,6 +183,12 @@ public class LessonService {
     }
 
     private LessonResponse toStudentLessonResponse(Lesson lesson, LessonProgressStatus progressStatus) {
+        return toLessonResponse(lesson, progressStatus);
+    }
+
+    private LessonResponse toLessonResponse(Lesson lesson, LessonProgressStatus progressStatus) {
+        var video = lessonVideoRepository.findByLessonId(lesson.getId()).orElse(null);
+        var quiz = quizRepository.findByLessonId(lesson.getId()).orElse(null);
         return new LessonResponse(
                 lesson.getId(),
                 lesson.getProgram().getId(),
@@ -175,8 +196,13 @@ public class LessonService {
                 lesson.getLessonNumber(),
                 lesson.getContent(),
                 lesson.getStatus().name(),
-                progressStatus.name(),
-                progressStatus == LessonProgressStatus.LOCKED);
+                progressStatus != null ? progressStatus.name() : null,
+                progressStatus != null ? progressStatus == LessonProgressStatus.LOCKED : null,
+                video != null,
+                video != null ? video.getStatus().name() : null,
+                video != null ? video.getDurationSeconds() : null,
+                quiz != null,
+                quiz != null ? quiz.getQuestions().size() : 0);
     }
 
     private void syncProgressToActiveEnrollments(Lesson lesson) {

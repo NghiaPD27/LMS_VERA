@@ -18,6 +18,19 @@ public interface TeacherBookingRepository extends JpaRepository<TeacherBooking, 
     boolean existsByStudentIdAndLessonIdAndStatus(Long studentId, Long lessonId, BookingStatus status);
 
     @EntityGraph(attributePaths = {"student", "student.studentProfile", "teacher", "teacher.teacherProfile", "lesson", "enrollment", "enrollment.program"})
+    @Query("""
+            SELECT b FROM TeacherBooking b
+            WHERE b.student.id = :studentId
+            AND (:lessonId IS NULL OR b.lesson.id = :lessonId)
+            AND (:status IS NULL OR b.status = :status)
+            ORDER BY b.startAt DESC
+            """)
+    List<TeacherBooking> findStudentBookings(
+            @Param("studentId") Long studentId,
+            @Param("lessonId") Long lessonId,
+            @Param("status") BookingStatus status);
+
+    @EntityGraph(attributePaths = {"student", "student.studentProfile", "teacher", "teacher.teacherProfile", "lesson", "enrollment", "enrollment.program"})
     @Query("SELECT b FROM TeacherBooking b WHERE b.id = :id")
     Optional<TeacherBooking> findWithDetailsById(@Param("id") Long id);
 
@@ -38,4 +51,19 @@ public interface TeacherBookingRepository extends JpaRepository<TeacherBooking, 
             @Param("teacherId") Long teacherId,
             @Param("status") BookingStatus status,
             @Param("from") Instant from);
+
+    @EntityGraph(attributePaths = {"student", "student.studentProfile", "lesson"})
+    @Query("""
+            SELECT b FROM TeacherBooking b
+            WHERE b.teacher.id = :teacherId
+            AND b.status = :status
+            AND (:from IS NULL OR b.endAt > :from)
+            AND (:to IS NULL OR b.startAt < :to)
+            ORDER BY b.startAt ASC
+            """)
+    List<TeacherBooking> findTeacherBookingsBetween(
+            @Param("teacherId") Long teacherId,
+            @Param("status") BookingStatus status,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
 }

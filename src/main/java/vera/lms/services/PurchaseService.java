@@ -8,7 +8,9 @@ import org.springframework.transaction.annotation.Transactional;
 import vera.lms.configs.SepayProperties;
 import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.dtos.PurchaseDto.CreatePurchaseRequest;
+import vera.lms.dtos.PurchaseDto.PurchaseEventResponse;
 import vera.lms.dtos.PurchaseDto.PurchaseResponse;
+import vera.lms.dtos.PurchaseDto.UpdatePurchaseStatusRequest;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.enums.ProgramSalesStatus;
 import vera.lms.enums.PurchaseStatus;
@@ -19,11 +21,13 @@ import vera.lms.exceptions.ResourceNotFoundException;
 import vera.lms.models.CoursePurchase;
 import vera.lms.models.Enrollment;
 import vera.lms.models.Program;
+import vera.lms.models.PurchaseEvent;
 import vera.lms.models.StudentProfile;
 import vera.lms.models.User;
 import vera.lms.repositories.CoursePurchaseRepository;
 import vera.lms.repositories.EnrollmentRepository;
 import vera.lms.repositories.ProgramRepository;
+import vera.lms.repositories.PurchaseEventRepository;
 import vera.lms.utils.PaginationUtils;
 
 import java.math.BigDecimal;
@@ -42,18 +46,21 @@ public class PurchaseService {
     private final EnrollmentRepository enrollmentRepository;
     private final EnrollmentService enrollmentService;
     private final SepayProperties sepayProperties;
+    private final PurchaseEventRepository purchaseEventRepository;
 
     public PurchaseService(
             CoursePurchaseRepository purchaseRepository,
             ProgramRepository programRepository,
             EnrollmentRepository enrollmentRepository,
             EnrollmentService enrollmentService,
-            SepayProperties sepayProperties) {
+            SepayProperties sepayProperties,
+            PurchaseEventRepository purchaseEventRepository) {
         this.purchaseRepository = purchaseRepository;
         this.programRepository = programRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.enrollmentService = enrollmentService;
         this.sepayProperties = sepayProperties;
+        this.purchaseEventRepository = purchaseEventRepository;
     }
 
     public PurchaseResponse createPurchase(User student, CreatePurchaseRequest request) {
@@ -145,6 +152,49 @@ public class PurchaseService {
         return toResponse(completePaidPurchase(purchase, Instant.now(), null, null));
     }
 
+    @Transactional(readOnly = true)
+    public PurchaseResponse getAdminPurchase(Long purchaseId) {
+        CoursePurchase purchase = purchaseRepository.findById(purchaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found with id " + purchaseId));
+        return toResponse(purchase);
+    }
+
+    public PurchaseResponse updatePurchaseStatus(Long purchaseId, UpdatePurchaseStatusRequest request) {
+        CoursePurchase purchase = purchaseRepository.findById(purchaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Purchase not found with id " + purchaseId));
+        PurchaseStatus newStatus = parseRequiredStatus(request.status());
+        String note = normalizeBlankToNull(request.note());
+        PurchaseStatus oldStatus = purchase.getStatus();
+
+        if (newStatus == PurchaseStatus.PAID) {
+            PurchaseResponse response = markPaid(purchaseId);
+            recordPurchaseEvent(purchase, oldStatus, PurchaseStatus.PAID, note);
+            return response;
+        }
+        if (oldStatus == PurchaseStatus.PAID) {
+            throw new ConflictException("Paid purchases cannot be changed to another status");
+        }
+        if (oldStatus == newStatus) {
+            purchase.setAdminNote(note);
+            return toResponse(purchaseRepository.save(purchase));
+        }
+        purchase.setStatus(newStatus);
+        purchase.setAdminNote(note);
+        purchase = purchaseRepository.save(purchase);
+        recordPurchaseEvent(purchase, oldStatus, newStatus, note);
+        return toResponse(purchase);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PurchaseEventResponse> getPurchaseEvents(Long purchaseId) {
+        if (!purchaseRepository.existsById(purchaseId)) {
+            throw new ResourceNotFoundException("Purchase not found with id " + purchaseId);
+        }
+        return purchaseEventRepository.findByPurchaseIdOrderByCreatedAtDesc(purchaseId).stream()
+                .map(this::toEventResponse)
+                .toList();
+    }
+
     public PurchaseResponse markPaidFromSepay(
             CoursePurchase purchase,
             String providerTransactionId,
@@ -182,7 +232,8 @@ public class PurchaseService {
                 purchase.getPaymentContent(),
                 enrollment != null ? enrollment.getId() : null,
                 purchase.getCreatedAt(),
-                purchase.getPaidAt());
+                purchase.getPaidAt(),
+                purchase.getAdminNote());
     }
 
     private CoursePurchase completePaidPurchase(
@@ -230,6 +281,47 @@ public class PurchaseService {
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Invalid purchase status: " + status);
         }
+    }
+
+    private PurchaseStatus parseRequiredStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            throw new BadRequestException("Purchase status is required");
+        }
+        try {
+            return PurchaseStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid purchase status: " + status);
+        }
+    }
+
+    private void recordPurchaseEvent(
+            CoursePurchase purchase,
+            PurchaseStatus oldStatus,
+            PurchaseStatus newStatus,
+            String note) {
+        purchaseEventRepository.save(PurchaseEvent.builder()
+                .purchase(purchase)
+                .oldStatus(oldStatus)
+                .newStatus(newStatus)
+                .note(note)
+                .build());
+    }
+
+    private PurchaseEventResponse toEventResponse(PurchaseEvent event) {
+        return new PurchaseEventResponse(
+                event.getId(),
+                event.getPurchase().getId(),
+                event.getOldStatus() != null ? event.getOldStatus().name() : null,
+                event.getNewStatus().name(),
+                event.getNote(),
+                event.getCreatedAt());
+    }
+
+    private String normalizeBlankToNull(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private String buildPaymentCode(Long purchaseId) {

@@ -67,10 +67,6 @@ public class EnrollmentController {
     @GetMapping("/api/student/enrollments")
     public ResponseEntity<List<EnrollmentResponse>> getStudentEnrollments(
             @AuthenticationPrincipal User student) {
-        List<Enrollment> enrollments = enrollmentService.getStudentEnrollments(student);
-        List<EnrollmentResponse> response = enrollments.stream()
-                .map(enrollmentMapper::toResponse)
-                .toList();
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(enrollmentService.getStudentEnrollmentResponses(student));
     }
 }

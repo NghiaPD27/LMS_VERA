@@ -26,9 +26,15 @@ public class EnrollmentDto {
         Long id,
         Long studentId,
         Long programId,
+        String programName,
         String status,
         Instant enrolledAt,
-        Instant expiredAt
+        Instant expiredAt,
+        Integer progressPercent,
+        Integer currentLessonNumber,
+        String currentLessonName,
+        String currentLessonStatus,
+        String nextAction
     ) {}
     public record AdminEnrollmentResponse(
         Long id,
@@ -39,6 +45,9 @@ public class EnrollmentDto {
         String programName,
         String status,
         Instant enrolledAt,
-        Instant expiredAt
+        Instant expiredAt,
+        Long teacherId,
+        String teacherName,
+        Instant teacherAssignedAt
     ) {}
 }

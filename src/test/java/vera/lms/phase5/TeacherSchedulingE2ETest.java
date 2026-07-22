@@ -212,6 +212,54 @@ class TeacherSchedulingE2ETest extends BaseIntegrationTest {
     }
 
     @Test
+    void testStudentCanReloadCurrentLessonBookingAndCancelIt() throws Exception {
+        Fixture fixture = seedReadyForBooking("Reload Booking");
+        assignTeacher(fixture.enrollmentId(), fixture.teacherId());
+        createAvailability();
+        Long bookingId = createBooking(fixture.lessonId());
+
+        mockMvc.perform(get("/api/student/bookings")
+                        .header("Authorization", "Bearer student-token")
+                        .param("lessonId", fixture.lessonId().toString())
+                        .param("status", "BOOKED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(bookingId))
+                .andExpect(jsonPath("$[0].teacherId").value(fixture.teacherId()))
+                .andExpect(jsonPath("$[0].startAt").value("2030-01-01T17:00:00Z"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/student/bookings/" + bookingId + "/cancel")
+                        .header("Authorization", "Bearer student-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void testTeacherCanViewAvailabilitySlotsWithBookingInfoAndCancelOpenAvailability() throws Exception {
+        Fixture fixture = seedReadyForBooking("Availability Manage");
+        assignTeacher(fixture.enrollmentId(), fixture.teacherId());
+        createAvailability();
+        Long bookingId = createBooking(fixture.lessonId());
+
+        mockMvc.perform(get("/api/teacher/availability")
+                        .header("Authorization", "Bearer teacher-token")
+                        .param("from", "2030-01-01T00:00:00Z")
+                        .param("to", "2030-01-02T00:00:00Z"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].status").value("BOOKED"))
+                .andExpect(jsonPath("$[0].bookingId").value(bookingId))
+                .andExpect(jsonPath("$[0].studentName").value("Phase5 student_user"))
+                .andExpect(jsonPath("$[1].status").value("OPEN"));
+
+        Long availabilityId = jdbcTemplate.queryForObject("SELECT id FROM teacher_availability", Long.class);
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/teacher/availability/" + availabilityId)
+                        .header("Authorization", "Bearer teacher-token"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Teacher availability has booked slots and cannot be cancelled"));
+    }
+
+    @Test
     void testTeacherSlotCannotBeDoubleBookedByAnotherStudent() throws Exception {
         Fixture fixture = seedReadyForBooking("Double Booking");
         assignTeacher(fixture.enrollmentId(), fixture.teacherId());

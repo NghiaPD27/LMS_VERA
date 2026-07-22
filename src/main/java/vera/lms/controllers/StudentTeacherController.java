@@ -34,4 +34,19 @@ public class StudentTeacherController {
             @RequestBody @Valid CreateBookingRequest request) {
         return ResponseEntity.ok(teacherSchedulingService.createBooking(student, request));
     }
+
+    @GetMapping("/api/student/bookings")
+    public ResponseEntity<List<TeacherBookingResponse>> getBookings(
+            @AuthenticationPrincipal User student,
+            @RequestParam(required = false) Long lessonId,
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(teacherSchedulingService.getStudentBookings(student, lessonId, status));
+    }
+
+    @PatchMapping("/api/student/bookings/{id}/cancel")
+    public ResponseEntity<TeacherBookingResponse> cancelBooking(
+            @AuthenticationPrincipal User student,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(teacherSchedulingService.cancelStudentBooking(student, id));
+    }
 }

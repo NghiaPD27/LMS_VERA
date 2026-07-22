@@ -8,6 +8,7 @@ import vera.lms.dtos.TeacherDto.CreateAvailabilityRequest;
 import vera.lms.dtos.TeacherDto.ReviewBookingRequest;
 import vera.lms.dtos.TeacherDto.TeacherAssignmentResponse;
 import vera.lms.dtos.TeacherDto.TeacherAvailabilityResponse;
+import vera.lms.dtos.TeacherDto.TeacherAvailabilitySlotResponse;
 import vera.lms.dtos.TeacherDto.TeacherBookingResponse;
 import vera.lms.dtos.TeacherDto.TeacherReviewResponse;
 import vera.lms.models.User;
@@ -29,6 +30,22 @@ public class TeacherController {
             @AuthenticationPrincipal User teacher,
             @RequestBody @Valid CreateAvailabilityRequest request) {
         return ResponseEntity.ok(teacherSchedulingService.createAvailability(teacher, request));
+    }
+
+    @GetMapping("/api/teacher/availability")
+    public ResponseEntity<List<TeacherAvailabilitySlotResponse>> getAvailability(
+            @AuthenticationPrincipal User teacher,
+            @RequestParam(required = false) java.time.Instant from,
+            @RequestParam(required = false) java.time.Instant to,
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(teacherSchedulingService.getTeacherAvailability(teacher, from, to, status));
+    }
+
+    @DeleteMapping("/api/teacher/availability/{id}")
+    public ResponseEntity<TeacherAvailabilityResponse> cancelAvailability(
+            @AuthenticationPrincipal User teacher,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(teacherSchedulingService.cancelAvailability(teacher, id));
     }
 
     @GetMapping("/api/teacher/students")

@@ -26,8 +26,7 @@ public class LessonController {
 
     @GetMapping("/{id}")
     public ResponseEntity<LessonResponse> getLesson(@PathVariable Long id) {
-        Lesson lesson = lessonService.getLesson(id);
-        return ResponseEntity.ok(lessonMapper.toResponse(lesson));
+        return ResponseEntity.ok(lessonService.getLessonResponse(id));
     }
 
     @PatchMapping("/{id}")

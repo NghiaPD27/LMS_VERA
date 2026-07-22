@@ -17,6 +17,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -114,6 +117,60 @@ public class TeacherSchedulingService {
     }
 
     @Transactional(readOnly = true)
+    public List<TeacherAvailabilitySlotResponse> getTeacherAvailability(
+            User teacher,
+            Instant from,
+            Instant to,
+            String status) {
+        ensureTeacher(teacher);
+        TeacherAvailabilityStatus availabilityStatus = parseOptionalAvailabilityStatus(status);
+        String slotStatusFilter = normalizeBlankToNull(status);
+        List<TeacherAvailability> availabilityRanges = availabilityRepository.findTeacherAvailabilityForSchedule(
+                teacher.getId(), from, to, availabilityStatus);
+        List<TeacherBooking> bookedSlots = bookingRepository.findTeacherBookingsBetween(
+                teacher.getId(), BookingStatus.BOOKED, from, to);
+        Map<Instant, TeacherBooking> bookingByStart = bookedSlots.stream()
+                .collect(Collectors.toMap(TeacherBooking::getStartAt, Function.identity(), (current, ignored) -> current));
+
+        List<TeacherAvailabilitySlotResponse> slots = new ArrayList<>();
+        for (TeacherAvailability availability : availabilityRanges) {
+            Instant slotStart = availability.getStartAt();
+            while (!slotStart.plus(SESSION_DURATION).isAfter(availability.getEndAt())) {
+                Instant slotEnd = slotStart.plus(SESSION_DURATION);
+                if (intersectsRange(slotStart, slotEnd, from, to)) {
+                    TeacherBooking booking = bookingByStart.get(slotStart);
+                    String slotStatus = availability.getStatus() == TeacherAvailabilityStatus.CANCELLED
+                            ? "CANCELLED"
+                            : booking != null ? "BOOKED" : "OPEN";
+                    if (slotStatusFilter == null || slotStatus.equalsIgnoreCase(slotStatusFilter)) {
+                        slots.add(toAvailabilitySlotResponse(availability, slotStart, slotEnd, slotStatus, booking));
+                    }
+                }
+                slotStart = slotEnd;
+            }
+        }
+        return slots;
+    }
+
+    public TeacherAvailabilityResponse cancelAvailability(User teacher, Long availabilityId) {
+        ensureTeacher(teacher);
+        TeacherAvailability availability = availabilityRepository.findById(availabilityId)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher availability not found with id " + availabilityId));
+        if (!availability.getTeacher().getId().equals(teacher.getId())) {
+            throw new ForbiddenException("Teacher availability does not belong to current teacher");
+        }
+        boolean hasBookedSlot = bookingRepository.findTeacherBookingsBetween(
+                teacher.getId(), BookingStatus.BOOKED, availability.getStartAt(), availability.getEndAt()).stream()
+                .anyMatch(booking -> booking.getStartAt().isBefore(availability.getEndAt())
+                        && booking.getEndAt().isAfter(availability.getStartAt()));
+        if (hasBookedSlot) {
+            throw new ConflictException("Teacher availability has booked slots and cannot be cancelled");
+        }
+        availability.setStatus(TeacherAvailabilityStatus.CANCELLED);
+        return toAvailabilityResponse(availabilityRepository.save(availability));
+    }
+
+    @Transactional(readOnly = true)
     public List<TeacherAssignmentResponse> getTeacherStudents(User teacher) {
         ensureTeacher(teacher);
         return assignmentRepository.findByTeacherId(teacher.getId()).stream()
@@ -194,6 +251,29 @@ public class TeacherSchedulingService {
         return toBookingResponse(bookingRepository.save(booking));
     }
 
+    @Transactional(readOnly = true)
+    public List<TeacherBookingResponse> getStudentBookings(User student, Long lessonId, String status) {
+        ensureStudent(student);
+        BookingStatus bookingStatus = parseOptionalBookingStatus(status);
+        return bookingRepository.findStudentBookings(student.getId(), lessonId, bookingStatus).stream()
+                .map(this::toBookingResponse)
+                .toList();
+    }
+
+    public TeacherBookingResponse cancelStudentBooking(User student, Long bookingId) {
+        ensureStudent(student);
+        TeacherBooking booking = bookingRepository.findWithDetailsById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher booking not found with id " + bookingId));
+        if (!booking.getStudent().getId().equals(student.getId())) {
+            throw new ForbiddenException("Teacher booking does not belong to current student");
+        }
+        if (booking.getStatus() != BookingStatus.BOOKED) {
+            throw new ConflictException("Only booked sessions can be cancelled");
+        }
+        booking.setStatus(BookingStatus.CANCELLED);
+        return toBookingResponse(bookingRepository.save(booking));
+    }
+
     public TeacherReviewResponse reviewBooking(User teacher, Long bookingId, ReviewBookingRequest request) {
         ensureTeacher(teacher);
         TeacherBooking booking = bookingRepository.findWithDetailsById(bookingId)
@@ -243,9 +323,7 @@ public class TeacherSchedulingService {
     }
 
     private StudentLessonAccess ensureStudentCanBookTeacher(User student, Long lessonId) {
-        if (student == null || student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
-            throw new ForbiddenException("Only students can book teacher sessions");
-        }
+        ensureStudent(student);
 
         Lesson lesson = lessonRepository.findByIdAndStatusNot(lessonId, LessonStatus.ARCHIVED)
                 .orElseThrow(() -> new ResourceNotFoundException("Lesson not found with id " + lessonId));
@@ -355,6 +433,28 @@ public class TeacherSchedulingService {
         }
     }
 
+    private BookingStatus parseOptionalBookingStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+        return parseBookingStatus(status);
+    }
+
+    private TeacherAvailabilityStatus parseOptionalAvailabilityStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = status.trim().toUpperCase();
+        if ("OPEN".equals(normalized) || "BOOKED".equals(normalized)) {
+            return TeacherAvailabilityStatus.ACTIVE;
+        }
+        try {
+            return TeacherAvailabilityStatus.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid availability status: " + status);
+        }
+    }
+
     private TeacherReviewResult parseReviewResult(String result) {
         try {
             return TeacherReviewResult.valueOf(result.trim().toUpperCase());
@@ -410,7 +510,27 @@ public class TeacherSchedulingService {
                 availability.getTeacher().getId(),
                 availability.getStartAt(),
                 availability.getEndAt(),
+                availability.getStatus().name(),
                 availability.getCreatedAt());
+    }
+
+    private TeacherAvailabilitySlotResponse toAvailabilitySlotResponse(
+            TeacherAvailability availability,
+            Instant slotStart,
+            Instant slotEnd,
+            String status,
+            TeacherBooking booking) {
+        return new TeacherAvailabilitySlotResponse(
+                availability.getId(),
+                availability.getTeacher().getId(),
+                slotStart,
+                slotEnd,
+                status,
+                booking != null ? booking.getId() : null,
+                booking != null ? booking.getStudent().getId() : null,
+                booking != null ? displayName(booking.getStudent()) : null,
+                booking != null ? booking.getLesson().getId() : null,
+                booking != null ? booking.getLesson().getName() : null);
     }
 
     private TeacherBookingResponse toBookingResponse(TeacherBooking booking) {
@@ -454,6 +574,16 @@ public class TeacherSchedulingService {
             return (user.getTeacherProfile().getFirstName() + " " + user.getTeacherProfile().getLastName()).trim();
         }
         return user.getUsername();
+    }
+
+    private void ensureStudent(User student) {
+        if (student == null || student.getRole() == null || student.getRole().getName() != RoleName.STUDENT) {
+            throw new ForbiddenException("Only students can manage teacher bookings");
+        }
+    }
+
+    private boolean intersectsRange(Instant slotStart, Instant slotEnd, Instant from, Instant to) {
+        return (from == null || slotEnd.isAfter(from)) && (to == null || slotStart.isBefore(to));
     }
 
     private record StudentLessonAccess(

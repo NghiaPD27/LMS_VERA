@@ -270,6 +270,50 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<AdminUserSummaryResponse> getAdminUsers(
+            String role,
+            String keyword,
+            String status,
+            Integer page,
+            Integer size) {
+        Pageable pageable = PaginationUtils.createPageable(page, size, Sort.by("id").descending());
+        Page<User> users = userRepository.searchAdminUsers(
+                parseOptionalRole(role),
+                parseOptionalAccountStatus(status),
+                normalizeKeyword(keyword),
+                pageable);
+        List<AdminUserSummaryResponse> content = users.getContent().stream()
+                .map(this::toAdminUserSummaryResponse)
+                .toList();
+        return new PageResponse<>(
+                content,
+                users.getTotalElements(),
+                users.getTotalPages(),
+                users.getNumber(),
+                users.getSize());
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse getAdminUser(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id " + id));
+        return toUserResponse(user);
+    }
+
+    public UserResponse resetPassword(Long id, ResetPasswordRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id " + id));
+        user.setPassword(passwordEncoder.encode(request.temporaryPassword()));
+        AccountAccess access = user.getAccountAccess();
+        if (access == null) {
+            access = accountAccessService.createDefaultAccess(user);
+            user.setAccountAccess(access);
+        }
+        access.setMustChangePassword(true);
+        return toUserResponse(userRepository.save(user));
+    }
+
+    @Transactional(readOnly = true)
     public AdminStudentResponse getAdminStudent(Long id) {
         return toAdminStudentResponse(getStudentUser(id));
     }
@@ -337,5 +381,94 @@ public class UserService {
             return null;
         }
         return keyword.trim();
+    }
+
+    private RoleName parseOptionalRole(String role) {
+        if (role == null || role.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return RoleName.valueOf(role.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid role: " + role);
+        }
+    }
+
+    private AccountStatus parseOptionalAccountStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return AccountStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid account status: " + status);
+        }
+    }
+
+    private AdminUserSummaryResponse toAdminUserSummaryResponse(User user) {
+        AccountAccess access = user.getAccountAccess();
+        return new AdminUserSummaryResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getRole() != null ? user.getRole().getName().name() : null,
+                user.isEnabled(),
+                access != null && access.getStatus() != null ? access.getStatus().name() : null);
+    }
+
+    private UserResponse toUserResponse(User user) {
+        return new UserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.isEnabled(),
+                user.getRole() != null ? user.getRole().getName().name() : null,
+                user.getStudentProfile() != null ? toStudentProfileResponse(user.getStudentProfile()) : null,
+                user.getTeacherProfile() != null ? toTeacherProfileResponse(user.getTeacherProfile()) : null,
+                user.getEvaluatorProfile() != null ? toEvaluatorProfileResponse(user.getEvaluatorProfile()) : null,
+                user.getAccountAccess() != null ? toAccountAccessResponse(user.getAccountAccess()) : null);
+    }
+
+    private StudentProfileResponse toStudentProfileResponse(StudentProfile profile) {
+        AccountAccess access = profile.getUser().getAccountAccess();
+        return new StudentProfileResponse(
+                profile.getUser().getId(),
+                profile.getUser().getUsername(),
+                profile.getUser().getEmail(),
+                profile.getFirstName(),
+                profile.getLastName(),
+                profile.getPhoneNumber(),
+                access != null && access.getStatus() != null ? access.getStatus().name() : null,
+                access != null && access.isMustChangePassword());
+    }
+
+    private TeacherProfileResponse toTeacherProfileResponse(TeacherProfile profile) {
+        return new TeacherProfileResponse(
+                profile.getUser().getId(),
+                profile.getUser().getUsername(),
+                profile.getUser().getEmail(),
+                profile.getFirstName(),
+                profile.getLastName(),
+                profile.getPhoneNumber(),
+                profile.getBio());
+    }
+
+    private EvaluatorProfileResponse toEvaluatorProfileResponse(EvaluatorProfile profile) {
+        return new EvaluatorProfileResponse(
+                profile.getUser().getId(),
+                profile.getUser().getUsername(),
+                profile.getUser().getEmail(),
+                profile.getFirstName(),
+                profile.getLastName(),
+                profile.getPhoneNumber());
+    }
+
+    private AccountAccessResponse toAccountAccessResponse(AccountAccess access) {
+        return new AccountAccessResponse(
+                access.getUser().getId(),
+                access.getStatus() != null ? access.getStatus().name() : null,
+                access.isMustChangePassword(),
+                access.getFirstLoginAt(),
+                access.getExpiredAt());
     }
 }

@@ -12,7 +12,6 @@ import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.dtos.ProgramDto.CreateProgramRequest;
 import vera.lms.dtos.ProgramDto.ProgramResponse;
 import vera.lms.enums.RoleName;
-import vera.lms.mapping.LessonMapper;
 import vera.lms.mapping.ProgramMapper;
 import vera.lms.models.Lesson;
 import vera.lms.models.Program;
@@ -29,18 +28,15 @@ public class ProgramController {
     private final ProgramService programService;
     private final LessonService lessonService;
     private final ProgramMapper programMapper;
-    private final LessonMapper lessonMapper;
 
     @Autowired
     public ProgramController(
             ProgramService programService,
             LessonService lessonService,
-            ProgramMapper programMapper,
-            LessonMapper lessonMapper) {
+            ProgramMapper programMapper) {
         this.programService = programService;
         this.lessonService = lessonService;
         this.programMapper = programMapper;
-        this.lessonMapper = lessonMapper;
     }
 
     @PostMapping
@@ -80,7 +76,7 @@ public class ProgramController {
             @PathVariable Long programId,
             @RequestBody @Valid CreateLessonRequest request) {
         Lesson lesson = lessonService.createLesson(programId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(lessonMapper.toResponse(lesson));
+        return ResponseEntity.status(HttpStatus.CREATED).body(lessonService.getLessonResponse(lesson.getId()));
     }
 
     @GetMapping("/{programId}/lessons")
@@ -88,9 +84,7 @@ public class ProgramController {
             @PathVariable Long programId,
             @AuthenticationPrincipal User currentUser) {
         List<LessonResponse> response = currentUser.getRole().getName() == RoleName.ADMIN
-                ? lessonService.getLessonsForProgram(programId).stream()
-                        .map(lessonMapper::toResponse)
-                        .toList()
+                ? lessonService.getLessonsForProgram(programId)
                 : lessonService.getLessonsForStudent(programId, currentUser);
         return ResponseEntity.ok(response);
     }

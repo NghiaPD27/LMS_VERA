@@ -456,6 +456,7 @@ public class CheckpointService {
                 .map(this::toParticipantResponse)
                 .toList();
         Checkpoint checkpoint = session.getCheckpoint();
+        int resultSubmittedCount = (int) resultRepository.countByParticipantSessionId(session.getId());
         return new CheckpointSessionResponse(
                 session.getId(),
                 checkpoint.getId(),
@@ -472,6 +473,9 @@ public class CheckpointService {
                 session.getStatus().name(),
                 session.getCreatedAt(),
                 session.getUpdatedAt(),
+                participants.size(),
+                resultSubmittedCount,
+                session.getStatus() == CheckpointSessionStatus.PENDING && resultSubmittedCount == 0,
                 participants);
     }
 

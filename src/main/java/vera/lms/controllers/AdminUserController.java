@@ -55,6 +55,28 @@ public class AdminUserController {
         return ResponseEntity.ok(userService.getAdminStudents(keyword, page, size));
     }
 
+    @GetMapping("/users")
+    public ResponseEntity<PageResponse<AdminUserSummaryResponse>> getUsers(
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ResponseEntity.ok(userService.getAdminUsers(role, keyword, status, page, size));
+    }
+
+    @GetMapping("/users/{id}")
+    public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getAdminUser(id));
+    }
+
+    @PostMapping("/users/{id}/reset-password")
+    public ResponseEntity<UserResponse> resetPassword(
+            @PathVariable Long id,
+            @RequestBody @Valid ResetPasswordRequest request) {
+        return ResponseEntity.ok(userService.resetPassword(id, request));
+    }
+
     @GetMapping("/students/{id}")
     public ResponseEntity<AdminStudentResponse> getStudent(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getAdminStudent(id));

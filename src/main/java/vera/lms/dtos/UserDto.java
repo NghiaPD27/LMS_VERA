@@ -162,6 +162,21 @@ public class UserDto {
         String status
     ) {}
 
+    public record AdminUserSummaryResponse(
+        Long id,
+        String username,
+        String email,
+        String role,
+        boolean enabled,
+        String status
+    ) {}
+
+    public record ResetPasswordRequest(
+        @NotBlank(message = "Temporary password is required")
+        @Size(min = 6, max = 100, message = "Temporary password must be between 6 and 100 characters")
+        String temporaryPassword
+    ) {}
+
     public record UserResponse(
         Long id,
         String username,

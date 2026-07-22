@@ -2,6 +2,7 @@ package vera.lms.models;
 
 import jakarta.persistence.*;
 import lombok.*;
+import vera.lms.enums.TeacherAvailabilityStatus;
 
 import java.time.Instant;
 
@@ -28,13 +29,30 @@ public class TeacherAvailability {
     @Column(name = "end_at", nullable = false)
     private Instant endAt;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(name = "status", nullable = false, length = 20)
+    private TeacherAvailabilityStatus status = TeacherAvailabilityStatus.ACTIVE;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     @PrePersist
     protected void onCreate() {
+        Instant now = Instant.now();
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = now;
         }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

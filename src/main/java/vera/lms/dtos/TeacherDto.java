@@ -57,7 +57,21 @@ public class TeacherDto {
             Long teacherId,
             Instant startAt,
             Instant endAt,
+            String status,
             Instant createdAt
+    ) {}
+
+    public record TeacherAvailabilitySlotResponse(
+            Long availabilityId,
+            Long teacherId,
+            Instant startAt,
+            Instant endAt,
+            String status,
+            Long bookingId,
+            Long studentId,
+            String studentName,
+            Long lessonId,
+            String lessonName
     ) {}
 
     public record TeacherSlotResponse(
