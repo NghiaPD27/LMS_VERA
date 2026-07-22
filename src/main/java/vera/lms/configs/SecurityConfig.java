@@ -95,6 +95,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/student/teacher-slots").hasRole("STUDENT")
                         .requestMatchers("/api/student/bookings/**").hasRole("STUDENT")
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
+                        .requestMatchers("/api/evaluator/**").hasRole("EVALUATOR")
                         .requestMatchers(HttpMethod.GET, "/api/student/enrollments").hasAnyRole("ADMIN", "STUDENT")
                         .anyRequest().authenticated()
                 )

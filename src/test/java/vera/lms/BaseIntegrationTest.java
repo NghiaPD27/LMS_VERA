@@ -30,6 +30,10 @@ public abstract class BaseIntegrationTest {
 
     @BeforeEach
     void setUpDatabase() {
+        jdbcTemplate.execute("DELETE FROM checkpoint_results");
+        jdbcTemplate.execute("DELETE FROM checkpoint_participants");
+        jdbcTemplate.execute("DELETE FROM checkpoint_sessions");
+        jdbcTemplate.execute("DELETE FROM checkpoints");
         jdbcTemplate.execute("DELETE FROM teacher_earnings");
         jdbcTemplate.execute("DELETE FROM teacher_reviews");
         jdbcTemplate.execute("DELETE FROM teacher_bookings");
