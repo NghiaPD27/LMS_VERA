@@ -30,6 +30,12 @@ public abstract class BaseIntegrationTest {
 
     @BeforeEach
     void setUpDatabase() {
+        jdbcTemplate.execute("DELETE FROM teacher_earnings");
+        jdbcTemplate.execute("DELETE FROM teacher_reviews");
+        jdbcTemplate.execute("DELETE FROM teacher_bookings");
+        jdbcTemplate.execute("DELETE FROM teacher_availability");
+        jdbcTemplate.execute("DELETE FROM teacher_compensation_configs");
+        jdbcTemplate.execute("DELETE FROM student_teacher_assignments");
         jdbcTemplate.execute("DELETE FROM quiz_answers");
         jdbcTemplate.execute("DELETE FROM quiz_attempts");
         jdbcTemplate.execute("DELETE FROM quiz_options");
