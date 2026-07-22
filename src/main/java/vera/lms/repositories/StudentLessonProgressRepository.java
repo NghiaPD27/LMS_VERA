@@ -28,15 +28,11 @@ public interface StudentLessonProgressRepository extends JpaRepository<StudentLe
             AND l.status = vera.lms.enums.LessonStatus.PUBLISHED
             AND MOD(l.lessonNumber, :checkpointInterval) = 0
             AND l.lessonNumber BETWEEN :minGateLesson AND :maxGateLesson
-            AND (:programId IS NULL OR program.id = :programId)
-            AND (:blockNumber IS NULL OR l.lessonNumber = (:blockNumber * :checkpointInterval))
             ORDER BY program.id ASC, l.lessonNumber ASC, s.id ASC
             """)
     List<StudentLessonProgress> findCheckpointReadyProgresses(
             @Param("status") LessonProgressStatus status,
             @Param("checkpointInterval") int checkpointInterval,
             @Param("minGateLesson") int minGateLesson,
-            @Param("maxGateLesson") int maxGateLesson,
-            @Param("programId") Long programId,
-            @Param("blockNumber") Integer blockNumber);
+            @Param("maxGateLesson") int maxGateLesson);
 }

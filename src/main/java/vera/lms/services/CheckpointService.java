@@ -3,6 +3,7 @@ package vera.lms.services;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.CheckpointDto.*;
@@ -75,13 +76,18 @@ public class CheckpointService {
                 LessonProgressStatus.WAITING_FOR_CHECKPOINT,
                 CHECKPOINT_INTERVAL,
                 CHECKPOINT_INTERVAL,
-                CHECKPOINT_INTERVAL * MAX_BLOCK_NUMBER,
-                programId,
-                blockNumber);
+                CHECKPOINT_INTERVAL * MAX_BLOCK_NUMBER);
 
         List<CheckpointEligibleStudentResponse> responses = new ArrayList<>();
         for (StudentLessonProgress progress : progresses) {
             Lesson gateLesson = progress.getLesson();
+            if (programId != null && !gateLesson.getProgram().getId().equals(programId)) {
+                continue;
+            }
+            Integer progressBlock = gateLesson.getLessonNumber() / CHECKPOINT_INTERVAL;
+            if (blockNumber != null && !progressBlock.equals(blockNumber)) {
+                continue;
+            }
             User student = progress.getStudent();
             Enrollment enrollment = enrollmentRepository
                     .findByStudentIdAndProgramIdAndStatus(student.getId(), gateLesson.getProgram().getId(), EnrollmentStatus.ACTIVE)
@@ -90,7 +96,6 @@ public class CheckpointService {
                 continue;
             }
 
-            Integer progressBlock = gateLesson.getLessonNumber() / CHECKPOINT_INTERVAL;
             Checkpoint checkpoint = checkpointRepository
                     .findByProgramIdAndBlockNumber(gateLesson.getProgram().getId(), progressBlock)
                     .orElse(null);
@@ -161,8 +166,9 @@ public class CheckpointService {
         validateWeekRange(weekStart, weekEnd);
         CheckpointSessionStatus sessionStatus = parseOptionalSessionStatus(status);
         Pageable pageable = PaginationUtils.createPageable(page, size, Sort.by("scheduledAt").descending());
-        Page<CheckpointSession> sessions = sessionRepository.searchAdminSessions(
-                programId, blockNumber, sessionStatus, weekStart, weekEnd, pageable);
+        Page<CheckpointSession> sessions = sessionRepository.findAll(
+                adminSessionSpecification(programId, blockNumber, sessionStatus, weekStart, weekEnd),
+                pageable);
         List<CheckpointSessionResponse> content = sessions.getContent().stream()
                 .map(this::toSessionResponse)
                 .toList();
@@ -535,6 +541,36 @@ public class CheckpointService {
         } catch (Exception e) {
             throw new BadRequestException("Invalid checkpoint session status: " + status);
         }
+    }
+
+    private Specification<CheckpointSession> adminSessionSpecification(
+            Long programId,
+            Integer blockNumber,
+            CheckpointSessionStatus status,
+            Instant weekStart,
+            Instant weekEnd) {
+        return (root, query, criteriaBuilder) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            if (programId != null || blockNumber != null) {
+                var checkpoint = root.join("checkpoint");
+                if (programId != null) {
+                    predicates.add(criteriaBuilder.equal(checkpoint.get("program").get("id"), programId));
+                }
+                if (blockNumber != null) {
+                    predicates.add(criteriaBuilder.equal(checkpoint.get("blockNumber"), blockNumber));
+                }
+            }
+            if (status != null) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+            if (weekStart != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("scheduledAt"), weekStart));
+            }
+            if (weekEnd != null) {
+                predicates.add(criteriaBuilder.lessThan(root.get("scheduledAt"), weekEnd));
+            }
+            return criteriaBuilder.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
     }
 
     private void ensureSessionEditable(CheckpointSession session) {
