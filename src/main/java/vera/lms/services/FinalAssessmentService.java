@@ -43,6 +43,7 @@ public class FinalAssessmentService {
     private final ProgramRepository programRepository;
     private final AccountAccessRepository accountAccessRepository;
     private final SepayProperties sepayProperties;
+    private final AuditService auditService;
 
     public FinalAssessmentService(
             FinalAssessmentSessionRepository sessionRepository,
@@ -56,7 +57,8 @@ public class FinalAssessmentService {
             UserRepository userRepository,
             ProgramRepository programRepository,
             AccountAccessRepository accountAccessRepository,
-            SepayProperties sepayProperties) {
+            SepayProperties sepayProperties,
+            AuditService auditService) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
         this.resultRepository = resultRepository;
@@ -69,6 +71,7 @@ public class FinalAssessmentService {
         this.programRepository = programRepository;
         this.accountAccessRepository = accountAccessRepository;
         this.sepayProperties = sepayProperties;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -257,6 +260,12 @@ public class FinalAssessmentService {
         result = resultRepository.save(result);
         applyResultToEnrollment(participant.getEnrollment(), assessmentResult);
         updateSessionCompletion(session);
+        auditService.record(
+                AuditAction.FINAL_ASSESSMENT_RESULT_SUBMITTED,
+                "FINAL_ASSESSMENT_PARTICIPANT",
+                participant.getId(),
+                "result=" + assessmentResult.name() + ", enrollmentId=" + participant.getEnrollment().getId()
+                        + ", sessionId=" + session.getId());
         return toResultResponse(result);
     }
 
@@ -334,6 +343,9 @@ public class FinalAssessmentService {
             Long enrollmentId,
             String status) {
         ensureStudent(student);
+        if (enrollmentId != null) {
+            getStudentEnrollment(student, enrollmentId);
+        }
         PurchaseStatus paymentStatus = parseOptionalPaymentStatus(status);
         return retakePaymentRepository.searchStudentPayments(student.getId(), enrollmentId, paymentStatus).stream()
                 .map(this::toRetakePaymentResponse)

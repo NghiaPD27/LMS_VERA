@@ -25,6 +25,7 @@ public interface CoursePurchaseRepository extends JpaRepository<CoursePurchase, 
     Optional<CoursePurchase> findByPaymentCode(String paymentCode);
 
     boolean existsByStudentIdAndProgramIdAndStatus(Long studentId, Long programId, PurchaseStatus status);
+    long countByStatus(PurchaseStatus status);
 
     @EntityGraph(attributePaths = {"student", "student.studentProfile", "program", "enrollment"})
     @Query("""

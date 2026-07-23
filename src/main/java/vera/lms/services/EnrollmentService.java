@@ -12,6 +12,7 @@ import vera.lms.dtos.EnrollmentDto.AdminEnrollmentResponse;
 import vera.lms.dtos.EnrollmentDto.ExtendEnrollmentRequest;
 import vera.lms.dtos.EnrollmentDto.UpdateEnrollmentRequest;
 import vera.lms.dtos.PageDto.PageResponse;
+import vera.lms.enums.AuditAction;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.enums.LessonProgressStatus;
 import vera.lms.enums.LessonStatus;
@@ -39,6 +40,7 @@ public class EnrollmentService {
     private final LessonRepository lessonRepository;
     private final StudentLessonProgressRepository progressRepository;
     private final StudentTeacherAssignmentRepository assignmentRepository;
+    private final AuditService auditService;
 
     @Autowired
     public EnrollmentService(
@@ -47,13 +49,15 @@ public class EnrollmentService {
             ProgramRepository programRepository,
             LessonRepository lessonRepository,
             StudentLessonProgressRepository progressRepository,
-            StudentTeacherAssignmentRepository assignmentRepository) {
+            StudentTeacherAssignmentRepository assignmentRepository,
+            AuditService auditService) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.programRepository = programRepository;
         this.lessonRepository = lessonRepository;
         this.progressRepository = progressRepository;
         this.assignmentRepository = assignmentRepository;
+        this.auditService = auditService;
     }
 
     public Enrollment enrollStudent(EnrollStudentRequest request) {
@@ -117,7 +121,13 @@ public class EnrollmentService {
                 .toInstant();
 
         enrollment.setExpiredAt(newExpiry);
-        return enrollmentRepository.save(enrollment);
+        enrollment = enrollmentRepository.save(enrollment);
+        auditService.record(
+                AuditAction.ENROLLMENT_EXTENDED,
+                "ENROLLMENT",
+                enrollment.getId(),
+                "months=" + request.months() + ", expiredAt=" + currentExpiry + "->" + newExpiry);
+        return enrollment;
     }
 
     @Transactional(readOnly = true)

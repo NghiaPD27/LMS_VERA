@@ -39,6 +39,7 @@ public class CheckpointService {
     private final StudentLessonProgressRepository progressRepository;
     private final TeacherReviewRepository teacherReviewRepository;
     private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public CheckpointService(
             CheckpointRepository checkpointRepository,
@@ -50,7 +51,8 @@ public class CheckpointService {
             ProgramRepository programRepository,
             StudentLessonProgressRepository progressRepository,
             TeacherReviewRepository teacherReviewRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            AuditService auditService) {
         this.checkpointRepository = checkpointRepository;
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
@@ -61,6 +63,7 @@ public class CheckpointService {
         this.progressRepository = progressRepository;
         this.teacherReviewRepository = teacherReviewRepository;
         this.userRepository = userRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -333,6 +336,12 @@ public class CheckpointService {
         result = resultRepository.save(result);
         applyResultToProgress(participant, assessmentResult);
         updateSessionCompletion(participant.getSession());
+        auditService.record(
+                AuditAction.CHECKPOINT_RESULT_SUBMITTED,
+                "CHECKPOINT_PARTICIPANT",
+                participant.getId(),
+                "result=" + assessmentResult.name() + ", enrollmentId=" + participant.getEnrollment().getId()
+                        + ", sessionId=" + participant.getSession().getId());
         return toResultResponse(result);
     }
 

@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vera.lms.dtos.LessonDto.CreateLessonRequest;
 import vera.lms.dtos.LessonDto.LessonResponse;
 import vera.lms.dtos.LessonDto.UpdateLessonRequest;
+import vera.lms.enums.AuditAction;
 import vera.lms.enums.EnrollmentStatus;
 import vera.lms.enums.LessonProgressStatus;
 import vera.lms.enums.LessonStatus;
@@ -41,6 +42,7 @@ public class LessonService {
     private final StudentLessonProgressRepository progressRepository;
     private final LessonVideoRepository lessonVideoRepository;
     private final QuizRepository quizRepository;
+    private final AuditService auditService;
 
     public LessonService(
             LessonRepository lessonRepository,
@@ -48,13 +50,15 @@ public class LessonService {
             EnrollmentRepository enrollmentRepository,
             StudentLessonProgressRepository progressRepository,
             LessonVideoRepository lessonVideoRepository,
-            QuizRepository quizRepository) {
+            QuizRepository quizRepository,
+            AuditService auditService) {
         this.lessonRepository = lessonRepository;
         this.programRepository = programRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.progressRepository = progressRepository;
         this.lessonVideoRepository = lessonVideoRepository;
         this.quizRepository = quizRepository;
+        this.auditService = auditService;
     }
 
     public Lesson createLesson(Long programId, CreateLessonRequest request) {
@@ -96,6 +100,7 @@ public class LessonService {
             lesson.setStatus(LessonStatus.PUBLISHED);
             lesson = lessonRepository.save(lesson);
             syncProgressToActiveEnrollments(lesson);
+            auditService.record(AuditAction.LESSON_PUBLISHED, "LESSON", lesson.getId(), "programId=" + lesson.getProgram().getId());
         }
         return lesson;
     }
@@ -105,7 +110,9 @@ public class LessonService {
         if (progressRepository.countByLessonId(id) > 0) {
             lesson.setStatus(LessonStatus.ARCHIVED);
             lessonRepository.save(lesson);
+            auditService.record(AuditAction.LESSON_ARCHIVED, "LESSON", lesson.getId(), "Archived instead of deleted because progress exists");
         } else {
+            auditService.record(AuditAction.LESSON_DELETED, "LESSON", lesson.getId(), "Hard deleted lesson without progress");
             lessonRepository.delete(lesson);
         }
     }

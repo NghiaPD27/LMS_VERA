@@ -38,6 +38,7 @@ public class TeacherSchedulingService {
     private final TeacherReviewRepository reviewRepository;
     private final TeacherCompensationConfigRepository compensationRepository;
     private final TeacherEarningRepository earningRepository;
+    private final AuditService auditService;
 
     public TeacherSchedulingService(
             EnrollmentRepository enrollmentRepository,
@@ -49,7 +50,8 @@ public class TeacherSchedulingService {
             TeacherBookingRepository bookingRepository,
             TeacherReviewRepository reviewRepository,
             TeacherCompensationConfigRepository compensationRepository,
-            TeacherEarningRepository earningRepository) {
+            TeacherEarningRepository earningRepository,
+            AuditService auditService) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.lessonRepository = lessonRepository;
@@ -60,6 +62,7 @@ public class TeacherSchedulingService {
         this.reviewRepository = reviewRepository;
         this.compensationRepository = compensationRepository;
         this.earningRepository = earningRepository;
+        this.auditService = auditService;
     }
 
     public TeacherAssignmentResponse assignTeacher(Long enrollmentId, AssignTeacherRequest request) {
@@ -311,6 +314,12 @@ public class TeacherSchedulingService {
                 .status(TeacherEarningStatus.EARNED)
                 .build();
         earning = earningRepository.save(earning);
+        auditService.record(
+                AuditAction.TEACHER_REVIEW_SUBMITTED,
+                "TEACHER_BOOKING",
+                booking.getId(),
+                "result=" + result.name() + ", studentId=" + booking.getStudent().getId()
+                        + ", lessonId=" + booking.getLesson().getId());
 
         return new TeacherReviewResponse(
                 review.getId(),

@@ -16,6 +16,7 @@ import java.util.Optional;
 public interface TeacherBookingRepository extends JpaRepository<TeacherBooking, Long> {
     boolean existsByTeacherIdAndStartAtAndStatus(Long teacherId, Instant startAt, BookingStatus status);
     boolean existsByStudentIdAndLessonIdAndStatus(Long studentId, Long lessonId, BookingStatus status);
+    long countByStatus(BookingStatus status);
 
     @EntityGraph(attributePaths = {"student", "student.studentProfile", "teacher", "teacher.teacherProfile", "lesson", "enrollment", "enrollment.program"})
     @Query("""

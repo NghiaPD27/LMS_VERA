@@ -21,6 +21,8 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     Optional<Enrollment> findByStudentIdAndProgramIdAndStatus(Long studentId, Long programId, EnrollmentStatus status);
     boolean existsByStudentIdAndStatus(Long studentId, EnrollmentStatus status);
     boolean existsByStudentIdAndProgramIdAndStatus(Long studentId, Long programId, EnrollmentStatus status);
+    long countByStatus(EnrollmentStatus status);
+    long countByStatusAndExpiredAtBefore(EnrollmentStatus status, Instant now);
 
     @Query("""
             SELECT CASE WHEN COUNT(e) > 0 THEN true ELSE false END
@@ -63,5 +65,36 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
             @Param("studentId") Long studentId,
             @Param("programId") Long programId,
             @Param("status") EnrollmentStatus status,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"student", "student.studentProfile", "student.accountAccess", "program"})
+    @Query("""
+            SELECT e FROM Enrollment e
+            JOIN e.student s
+            LEFT JOIN s.studentProfile sp
+            LEFT JOIN s.accountAccess aa
+            LEFT JOIN StudentTeacherAssignment assignment ON assignment.enrollment.id = e.id
+            WHERE (:programId IS NULL OR e.program.id = :programId)
+            AND (:enrollmentStatus IS NULL OR e.status = :enrollmentStatus)
+            AND (:accountStatus IS NULL OR aa.status = :accountStatus)
+            AND (:teacherId IS NULL OR assignment.teacher.id = :teacherId)
+            AND (:expiryFrom IS NULL OR e.expiredAt >= :expiryFrom)
+            AND (:expiryTo IS NULL OR e.expiredAt < :expiryTo)
+            AND (
+                :keyword IS NULL OR :keyword = ''
+                OR LOWER(s.username) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(s.email) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(sp.firstName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(sp.lastName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            )
+            """)
+    Page<Enrollment> searchAdminStudentProgress(
+            @Param("programId") Long programId,
+            @Param("enrollmentStatus") EnrollmentStatus enrollmentStatus,
+            @Param("accountStatus") vera.lms.enums.AccountStatus accountStatus,
+            @Param("teacherId") Long teacherId,
+            @Param("expiryFrom") Instant expiryFrom,
+            @Param("expiryTo") Instant expiryTo,
+            @Param("keyword") String keyword,
             Pageable pageable);
 }

@@ -11,6 +11,7 @@ import vera.lms.dtos.AuthDto.RegisterStudentRequest;
 import vera.lms.dtos.PageDto.PageResponse;
 import vera.lms.dtos.UserDto.*;
 import vera.lms.enums.AccountStatus;
+import vera.lms.enums.AuditAction;
 import vera.lms.enums.RoleName;
 import vera.lms.exceptions.BadRequestException;
 import vera.lms.exceptions.ConflictException;
@@ -32,6 +33,7 @@ public class UserService {
     private final EvaluatorProfileRepository evaluatorProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final AccountAccessService accountAccessService;
+    private final AuditService auditService;
 
     @Autowired
     public UserService(
@@ -41,7 +43,8 @@ public class UserService {
             TeacherProfileRepository teacherProfileRepository,
             EvaluatorProfileRepository evaluatorProfileRepository,
             PasswordEncoder passwordEncoder,
-            AccountAccessService accountAccessService) {
+            AccountAccessService accountAccessService,
+            AuditService auditService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.studentProfileRepository = studentProfileRepository;
@@ -49,6 +52,7 @@ public class UserService {
         this.evaluatorProfileRepository = evaluatorProfileRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountAccessService = accountAccessService;
+        this.auditService = auditService;
     }
 
     public StudentProfile createStudent(CreateStudentRequest request) {
@@ -77,7 +81,8 @@ public class UserService {
         user.setStudentProfile(profile);
         user.setAccountAccess(access);
 
-        userRepository.save(user);
+        user = userRepository.save(user);
+        auditService.record(AuditAction.USER_CREATED, "USER", user.getId(), "role=STUDENT username=" + user.getUsername());
         return profile;
     }
 
@@ -107,7 +112,8 @@ public class UserService {
         user.setStudentProfile(profile);
         user.setAccountAccess(access);
 
-        userRepository.save(user);
+        user = userRepository.save(user);
+        auditService.record(AuditAction.USER_CREATED, "USER", user.getId(), "role=STUDENT username=" + user.getUsername());
         return profile;
     }
 
@@ -138,7 +144,8 @@ public class UserService {
         user.setTeacherProfile(profile);
         user.setAccountAccess(access);
 
-        userRepository.save(user);
+        user = userRepository.save(user);
+        auditService.record(AuditAction.USER_CREATED, "USER", user.getId(), "role=TEACHER username=" + user.getUsername());
         return profile;
     }
 
@@ -168,13 +175,16 @@ public class UserService {
         user.setEvaluatorProfile(profile);
         user.setAccountAccess(access);
 
-        userRepository.save(user);
+        user = userRepository.save(user);
+        auditService.record(AuditAction.USER_CREATED, "USER", user.getId(), "role=EVALUATOR username=" + user.getUsername());
         return profile;
     }
 
     public User updateUser(Long id, UpdateUserRequest request, User currentUser) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id " + id));
+        boolean previousEnabled = user.isEnabled();
+        AccountStatus previousStatus = user.getAccountAccess() != null ? user.getAccountAccess().getStatus() : null;
 
         // Prevent admin self-demotion
         if (currentUser != null && id.equals(currentUser.getId())) {
@@ -211,7 +221,17 @@ public class UserService {
             }
         }
 
-        return userRepository.save(user);
+        user = userRepository.save(user);
+        AccountStatus newStatus = user.getAccountAccess() != null ? user.getAccountAccess().getStatus() : null;
+        if (previousEnabled != user.isEnabled() || previousStatus != newStatus) {
+            auditService.record(
+                    AuditAction.USER_STATUS_UPDATED,
+                    "USER",
+                    user.getId(),
+                    "enabled=" + previousEnabled + "->" + user.isEnabled()
+                            + ", status=" + statusName(previousStatus) + "->" + statusName(newStatus));
+        }
+        return user;
     }
 
     @Transactional(readOnly = true)
@@ -310,7 +330,9 @@ public class UserService {
             user.setAccountAccess(access);
         }
         access.setMustChangePassword(true);
-        return toUserResponse(userRepository.save(user));
+        user = userRepository.save(user);
+        auditService.record(AuditAction.PASSWORD_RESET, "USER", user.getId(), "Temporary password reset");
+        return toUserResponse(user);
     }
 
     @Transactional(readOnly = true)
@@ -381,6 +403,10 @@ public class UserService {
             return null;
         }
         return keyword.trim();
+    }
+
+    private String statusName(AccountStatus status) {
+        return status != null ? status.name() : null;
     }
 
     private RoleName parseOptionalRole(String role) {
