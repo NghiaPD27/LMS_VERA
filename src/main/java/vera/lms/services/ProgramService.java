@@ -36,6 +36,7 @@ public class ProgramService {
                 .name(request.name().trim())
                 .description(request.description())
                 .price(normalizePrice(request.price()))
+                .finalAssessmentRetakePrice(normalizeFinalAssessmentRetakePrice(request.finalAssessmentRetakePrice()))
                 .currency(normalizeCurrency(request.currency()))
                 .salesStatus(parseSalesStatusOrDefault(request.salesStatus()))
                 .build();
@@ -96,6 +97,7 @@ public class ProgramService {
         program.setName(request.name().trim());
         program.setDescription(request.description());
         program.setPrice(normalizePrice(request.price()));
+        program.setFinalAssessmentRetakePrice(normalizeFinalAssessmentRetakePrice(request.finalAssessmentRetakePrice()));
         program.setCurrency(normalizeCurrency(request.currency()));
         program.setSalesStatus(parseSalesStatusOrDefault(request.salesStatus()));
         return programRepository.save(program);
@@ -119,6 +121,7 @@ public class ProgramService {
                 program.getName(),
                 program.getDescription(),
                 program.getPrice(),
+                program.getFinalAssessmentRetakePrice(),
                 program.getCurrency(),
                 program.getSalesStatus().name());
     }
@@ -135,6 +138,16 @@ public class ProgramService {
         }
         if (price.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestException("Program price must be non-negative");
+        }
+        return price;
+    }
+
+    private BigDecimal normalizeFinalAssessmentRetakePrice(BigDecimal price) {
+        if (price == null) {
+            return BigDecimal.ZERO;
+        }
+        if (price.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BadRequestException("Final assessment retake price must be non-negative");
         }
         return price;
     }

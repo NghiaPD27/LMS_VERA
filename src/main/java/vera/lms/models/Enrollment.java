@@ -29,7 +29,7 @@ public class Enrollment {
 
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 30)
     private EnrollmentStatus status = EnrollmentStatus.ACTIVE;
 
     @Column(name = "enrolled_at")

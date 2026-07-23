@@ -14,6 +14,9 @@ public class ProgramDto {
         @DecimalMin(value = "0.00", message = "Program price must be non-negative")
         BigDecimal price,
 
+        @DecimalMin(value = "0.00", message = "Final assessment retake price must be non-negative")
+        BigDecimal finalAssessmentRetakePrice,
+
         String currency,
         String salesStatus
     ) {}
@@ -22,6 +25,7 @@ public class ProgramDto {
         String name,
         String description,
         BigDecimal price,
+        BigDecimal finalAssessmentRetakePrice,
         String currency,
         String salesStatus
     ) {}

@@ -8,10 +8,15 @@ public record SepayProperties(
         String bankAccount,
         String bankCode,
         String paymentCodePrefix,
+        String retakePaymentCodePrefix,
         String qrBaseUrl
 ) {
     public String paymentCodePrefixOrDefault() {
         return isBlank(paymentCodePrefix) ? "LMSP" : paymentCodePrefix.trim();
+    }
+
+    public String retakePaymentCodePrefixOrDefault() {
+        return isBlank(retakePaymentCodePrefix) ? "LMSR" : retakePaymentCodePrefix.trim();
     }
 
     public String qrBaseUrlOrDefault() {

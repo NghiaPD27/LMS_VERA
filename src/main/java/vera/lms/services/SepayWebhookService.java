@@ -11,8 +11,10 @@ import vera.lms.enums.PurchaseStatus;
 import vera.lms.enums.SepayWebhookEventStatus;
 import vera.lms.exceptions.UnauthorizedException;
 import vera.lms.models.CoursePurchase;
+import vera.lms.models.FinalAssessmentRetakePayment;
 import vera.lms.models.SepayWebhookEvent;
 import vera.lms.repositories.CoursePurchaseRepository;
+import vera.lms.repositories.FinalAssessmentRetakePaymentRepository;
 import vera.lms.repositories.SepayWebhookEventRepository;
 
 import javax.crypto.Mac;
@@ -34,20 +36,26 @@ public class SepayWebhookService {
     private final SepayProperties sepayProperties;
     private final ObjectMapper objectMapper;
     private final CoursePurchaseRepository purchaseRepository;
+    private final FinalAssessmentRetakePaymentRepository retakePaymentRepository;
     private final SepayWebhookEventRepository eventRepository;
     private final PurchaseService purchaseService;
+    private final FinalAssessmentService finalAssessmentService;
 
     public SepayWebhookService(
             SepayProperties sepayProperties,
             ObjectMapper objectMapper,
             CoursePurchaseRepository purchaseRepository,
+            FinalAssessmentRetakePaymentRepository retakePaymentRepository,
             SepayWebhookEventRepository eventRepository,
-            PurchaseService purchaseService) {
+            PurchaseService purchaseService,
+            FinalAssessmentService finalAssessmentService) {
         this.sepayProperties = sepayProperties;
         this.objectMapper = objectMapper;
         this.purchaseRepository = purchaseRepository;
+        this.retakePaymentRepository = retakePaymentRepository;
         this.eventRepository = eventRepository;
         this.purchaseService = purchaseService;
+        this.finalAssessmentService = finalAssessmentService;
     }
 
     public SepayWebhookResponse handleWebhook(String rawBody, String signature, String timestampHeader) {
@@ -74,26 +82,53 @@ public class SepayWebhookService {
 
         CoursePurchase purchase = purchaseRepository.findByPaymentCode(paymentCode)
                 .orElse(null);
-        if (purchase == null) {
-            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Purchase not found");
-            return new SepayWebhookResponse(true);
-        }
         if (!matchesConfiguredAccount(payload.accountNumber())) {
             saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Bank account does not match");
             return new SepayWebhookResponse(true);
         }
-        if (!matchesAmount(payload.transferAmount(), purchase.getAmount())) {
-            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Transfer amount does not match purchase amount");
+
+        if (purchase != null) {
+            if (!matchesAmount(payload.transferAmount(), purchase.getAmount())) {
+                saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Transfer amount does not match purchase amount");
+                return new SepayWebhookResponse(true);
+            }
+            if (purchase.getStatus() != PurchaseStatus.PENDING && purchase.getStatus() != PurchaseStatus.PAID) {
+                saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Purchase is not payable");
+                return new SepayWebhookResponse(true);
+            }
+
+            try {
+                purchaseService.markPaidFromSepay(
+                        purchase,
+                        String.valueOf(payload.id()),
+                        payload.referenceCode(),
+                        Instant.now());
+                saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.PROCESSED, null);
+            } catch (RuntimeException ex) {
+                saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.FAILED, ex.getMessage());
+            }
+
             return new SepayWebhookResponse(true);
         }
-        if (purchase.getStatus() != PurchaseStatus.PENDING && purchase.getStatus() != PurchaseStatus.PAID) {
-            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Purchase is not payable");
+
+        FinalAssessmentRetakePayment retakePayment = retakePaymentRepository.findByPaymentCode(paymentCode)
+                .orElse(null);
+        if (retakePayment == null) {
+            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Payment code not found");
+            return new SepayWebhookResponse(true);
+        }
+        if (!matchesAmount(payload.transferAmount(), retakePayment.getAmount())) {
+            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Transfer amount does not match final assessment retake amount");
+            return new SepayWebhookResponse(true);
+        }
+        if (retakePayment.getStatus() != PurchaseStatus.PENDING && retakePayment.getStatus() != PurchaseStatus.PAID) {
+            saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.IGNORED, "Final assessment retake payment is not payable");
             return new SepayWebhookResponse(true);
         }
 
         try {
-            purchaseService.markPaidFromSepay(
-                    purchase,
+            finalAssessmentService.markRetakePaymentPaidFromSepay(
+                    retakePayment,
                     String.valueOf(payload.id()),
                     payload.referenceCode(),
                     Instant.now());
@@ -101,7 +136,6 @@ public class SepayWebhookService {
         } catch (RuntimeException ex) {
             saveEvent(payload, rawBody, paymentCode, SepayWebhookEventStatus.FAILED, ex.getMessage());
         }
-
         return new SepayWebhookResponse(true);
     }
 
@@ -147,8 +181,9 @@ public class SepayWebhookService {
         if (isBlank(payload.content())) {
             return null;
         }
-        String prefix = Pattern.quote(sepayProperties.paymentCodePrefixOrDefault());
-        Matcher matcher = Pattern.compile(prefix + "\\d+").matcher(payload.content());
+        String coursePrefix = Pattern.quote(sepayProperties.paymentCodePrefixOrDefault());
+        String retakePrefix = Pattern.quote(sepayProperties.retakePaymentCodePrefixOrDefault());
+        Matcher matcher = Pattern.compile("(" + coursePrefix + "|" + retakePrefix + ")\\d+").matcher(payload.content());
         return matcher.find() ? matcher.group() : null;
     }
 

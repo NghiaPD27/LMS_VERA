@@ -30,6 +30,10 @@ public class Program {
     private BigDecimal price = BigDecimal.ZERO;
 
     @Builder.Default
+    @Column(name = "final_assessment_retake_price", nullable = false, precision = 12, scale = 2)
+    private BigDecimal finalAssessmentRetakePrice = BigDecimal.ZERO;
+
+    @Builder.Default
     @Column(name = "currency", nullable = false, length = 3)
     private String currency = "VND";
 
